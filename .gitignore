@@ -1,0 +1,42 @@
+# --- Third-party clones (each has its own git repo) ---
+/sokol-odin/
+/raylib-odin/
+/skald-example/vendor/
+
+# --- Build output ---
+build/
+bin/
+*.bin
+*.exe
+*.dll
+*.so
+*.dylib
+*.a
+*.lib
+*.exp
+*.pdb
+*.ilk
+*.obj
+*.o
+*.bc
+*.ll
+*.spv
+
+# --- Profiling / debugging ---
+perf.data
+perf.data.old
+cachegrind.out.*
+callgrind.out.*
+*.tmp
+*.bkp
+core
+core.*
+
+# --- Editors / OS ---
+.vscode/
+.idea/
+.vs/
+*.swp
+*~
+.DS_Store
+Thumbs.db

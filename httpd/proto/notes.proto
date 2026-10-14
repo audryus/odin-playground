@@ -1,0 +1,28 @@
+// The gRPC contract of this POC.
+//
+// Nothing is generated from this file for Odin (there is no protoc plugin):
+// server/protobuf.odin encodes/decodes these messages by hand, and
+// server/grpc.odin implements the service. Keep both in sync with this file.
+//
+// It IS used by other languages' tooling, e.g. tools/grpc_client (Go) or
+// `grpcurl -plaintext -proto proto/notes.proto ...`.
+syntax = "proto3";
+
+package notes.v1;
+
+option go_package = "example.com/httpd/notesv1";
+
+service NotesService {
+  // HTTP/2 path: POST /notes.v1.NotesService/GetNote
+  rpc GetNote(GetNoteRequest) returns (Note);
+}
+
+message GetNoteRequest {
+  int64 id = 1;
+}
+
+message Note {
+  int64 id = 1;
+  string title = 2;
+  string body = 3;
+}

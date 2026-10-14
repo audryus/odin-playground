@@ -2,6 +2,7 @@
 /sokol-odin/
 /raylib-odin/
 /skald-example/vendor/
+/hello-raylib/vendor/
 
 # --- Build output ---
 build/

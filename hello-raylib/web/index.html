@@ -1,0 +1,42 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+	<meta charset="utf-8">
+	<meta name="viewport" content="width=device-width, initial-scale=1">
+	<title>Hello, Raylib!</title>
+	<style>
+		html, body { margin: 0; height: 100%; background: #181818; }
+		body { display: flex; align-items: center; justify-content: center; }
+		canvas { display: block; }
+	</style>
+</head>
+<body>
+	<canvas id="canvas" oncontextmenu="event.preventDefault()" tabindex="-1"></canvas>
+
+	<!-- Imports que o runtime do Odin espera (odin_env etc.). -->
+	<script src="odin.js"></script>
+	<script>
+		const odinMemory = new odin.WasmMemoryInterface();
+		odinMemory.setIntSize(4);
+		const odinImports = odin.setupDefaultImports(odinMemory);
+
+		var Module = {
+			canvas: document.getElementById("canvas"),
+			print: (text) => console.log(text),
+			printErr: (text) => console.error(text),
+
+			// Junta os imports do Odin com os do Emscripten antes de instanciar o wasm.
+			instantiateWasm: (imports, successCallback) => {
+				WebAssembly.instantiateStreaming(fetch("index.wasm"), { ...odinImports, ...imports })
+					.then(({ instance }) => {
+						odinMemory.setExports(instance.exports);
+						odinMemory.setMemory(instance.exports.memory);
+						successCallback(instance);
+					});
+				return {};
+			},
+		};
+	</script>
+	{{{ SCRIPT }}}
+</body>
+</html>

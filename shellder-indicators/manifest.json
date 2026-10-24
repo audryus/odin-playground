@@ -1,0 +1,17 @@
+{
+  "schemaVersion": 1,
+  "id": "shellder.indicators",
+  "name": "Indicators",
+  "version": "1.0.0",
+  "author": "audryus",
+  "description": "Status indicators: dictation, screen recording, reminders, night light, do not disturb, stay awake",
+  "kinds": ["bar-widget"],
+  "entryPoints": {
+    "barWidget": ["python3", "-u", "indicators.py"]
+  },
+  "barWidget": {
+    "displayName": "Indicators",
+    "category": "Status",
+    "defaultSection": "center"
+  }
+}

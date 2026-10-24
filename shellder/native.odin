@@ -3,7 +3,7 @@ package shellder
 import "core:c"
 import vk "vendor:vulkan"
 
-// Bindings para o código C em native/ (compilado pelo build.sh em
+// Bindings for the C code in native/ (built by build.sh into
 // build/libshellder_native.a). Ver native/wlbar.h e native/proc.h.
 
 foreign import native {
@@ -68,9 +68,9 @@ foreign vulkan {
 
 VK_INSTANCE_EXTS := [?]cstring{"VK_KHR_surface", "VK_KHR_wayland_surface"}
 
-// create_wayland_surface é o callback que o Skald chama (com a instância que
-// ele mesmo criou) para obter o VkSurfaceKHR de um output. `user` carrega o
-// índice do output no shim.
+// create_wayland_surface is the callback Skald calls (with the instance it
+// created) to get an output's VkSurfaceKHR. `user` carries the shim's output
+// index.
 create_wayland_surface :: proc(instance: vk.Instance, user: rawptr) -> (vk.SurfaceKHR, bool) {
 	out := i32(uintptr(user))
 	info := vk.WaylandSurfaceCreateInfoKHR{

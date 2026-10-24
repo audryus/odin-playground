@@ -9,7 +9,7 @@ import model as M  # noqa: E402
 
 
 class FormatTest(unittest.TestCase):
-    when = dt.datetime(2026, 10, 24, 17, 5, 9)  # sábado, semana ISO 43
+    when = dt.datetime(2026, 10, 24, 17, 5, 9)  # Saturday, ISO week 43
 
     def test_default_formats(self):
         self.assertEqual(M.format_qt(self.when, "dddd HH:mm"), "Saturday 17:05")

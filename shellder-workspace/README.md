@@ -1,36 +1,36 @@
 # shellder-workspace
 
-Workspaces do Hyprland na barra do [Shellder](../shellder), **por monitor**.
-Visual do `omarchy.workspaces` (`/usr/share/omarchy/shell/plugins/bar/widgets/Workspaces.qml`),
-lista por monitor como no `skald-bar`.
+Hyprland workspaces on the [Shellder](../shellder) bar, **per output**. Looks
+like `omarchy.workspaces` (`/usr/share/omarchy/shell/plugins/bar/widgets/Workspaces.qml`),
+lists per output like the `skald-bar` prototype.
 
-Cada barra mostra os workspaces daquele monitor: os presos a ele por regra do
-Hyprland (`workspace = 2, monitor:DP-1, persistent:true`) mais os que existem
-nele no momento.
+Each bar shows that output's workspaces: the ones bound to it by a Hyprland
+rule (`workspace = 2, monitor:DP-1, persistent:true`) plus the ones currently
+on it.
 
-| Estado                 | Aparência |
-|------------------------|-----------|
-| ativo no monitor       | glifo `󱓻` |
-| ocupado                | número, opacidade 1 |
-| vazio                  | número, opacidade 0.5 |
+| State                  | Look |
+|------------------------|------|
+| active on the output   | glyph `󱓻` |
+| occupied               | number, opacity 1 |
+| empty                  | number, opacity 0.5 |
 
-| Ação     | O que faz |
-|----------|-----------|
-| clique   | vai para o workspace |
-| scroll   | anterior/próximo workspace daquele monitor |
+| Action   | What it does |
+|----------|--------------|
+| click    | focus the workspace |
+| scroll   | previous/next workspace of that output |
 
-Atualiza pelos eventos do Hyprland (`socket2`), sem polling. O workspace 10
-aparece como `0`, como no Omarchy; workspaces com nome mostram o nome.
+Updates come from Hyprland events (`socket2`), with no polling. Workspace 10
+shows as `0`, as in Omarchy; named workspaces show their name.
 
-## Instalar
+## Install
 
 ```bash
-make install   # symlink em ~/.config/shellder/plugins/shellder-workspace
+make install   # symlink into ~/.config/shellder/plugins/shellder-workspace
 ```
 
-Entra sozinho em `bar.layout.left` (`defaultSection`). Só Python 3, sem
-dependências.
+It is added to `bar.layout.left` automatically (`defaultSection`). Python 3
+only, no dependencies.
 
-Usa duas extensões do protocolo do Shellder: atualizações com `"monitor"`
-(conteúdo diferente em cada barra) e `"segments"` (um botão por workspace; o
-clique traz `"segment": "<id>"`).
+Uses two Shellder protocol extensions: updates with `"monitor"` (different
+content on each bar) and `"segments"` (one button per workspace; the click
+carries `"segment": "<id>"`).

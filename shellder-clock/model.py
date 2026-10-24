@@ -1,28 +1,27 @@
-"""Matemática de datas e formatos do clock — porte do Model.js do Omarchy
+"""Clock date math and formats — port of Omarchy's Model.js
 (/usr/share/omarchy/shell/plugins/panels/clock/Model.js).
 
-Tudo aqui é puro (sem GTK) para poder ser testado: `python3 -m unittest`.
-Os formatos são os mesmos strings de data do Qt que o Omarchy usa
-("dddd HH:mm", "d MMMM 'W'ww yyyy"...), para a config ser intercambiável.
+Everything here is pure (no GTK) so it can be tested: `python3 -m unittest`.
+Formats are the same Qt date strings Omarchy uses ("dddd HH:mm",
+"d MMMM 'W'ww yyyy"...), so the settings are interchangeable.
 """
 
 import datetime as dt
 import re
 
-# Índices iguais aos do Date.getDay() do JS: 0 = domingo ... 6 = sábado.
+# Same indices as JS Date.getDay(): 0 = Sunday ... 6 = Saturday.
 WEEKDAY_NAMES = ["sunday", "monday", "tuesday", "wednesday", "thursday", "friday", "saturday"]
 
-# A interface é em inglês, como a do Omarchy: nomes fixos, sem depender do
-# locale do sistema.
+# The interface is English, like Omarchy's: fixed names, independent of the
+# system locale.
 DAY_LONG = ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"]
 DAY_SHORT = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"]
 MONTH_LONG = ["January", "February", "March", "April", "May", "June", "July",
               "August", "September", "October", "November", "December"]
 MONTH_SHORT = [m[:3] for m in MONTH_LONG]
 
-# ---- Formatos do rótulo. O clique direito percorre esta lista e grava o
-#      resultado nas preferências, então o que a barra mostra e o que a config
-#      guarda são sempre a mesma coisa.
+# ---- Label formats. Right click walks this list and saves the result, so
+#      what the bar shows and what the settings store are always the same.
 CLOCK_FORMATS = [
     "dddd HH:mm",
     "dddd h:mm AP",
@@ -54,9 +53,9 @@ def clock_formats(vertical):
 
 
 def clock_format_ring(configured, configured_alt, presets):
-    """Presets em ordem fixa + o alternativo e o atual, se forem outros. A
-    ordem não pode depender do atual: o ciclo grava o resultado e uma lista
-    que se reordenasse ficaria alternando entre dois itens."""
+    """Presets in a fixed order plus the alternate and current formats when
+    they differ. The order must not depend on the current one: cycling saves
+    the result, and a list that reshuffled itself would bounce between two."""
     ring = []
     for fmt in list(presets or []) + [configured_alt, configured]:
         fmt = "" if fmt is None else str(fmt)
@@ -66,7 +65,7 @@ def clock_format_ring(configured, configured_alt, presets):
 
 
 def next_clock_format(ring, current):
-    """Próximo depois de `current`; um formato desconhecido começa do topo."""
+    """Next after `current`; an unknown format starts at the top."""
     if not ring:
         return ""
     current = "" if current is None else str(current)
@@ -74,15 +73,15 @@ def next_clock_format(ring, current):
     return ring[(index + 1) % len(ring)]
 
 
-# ---- Formatador de datas no estilo Qt (Qt.formatDateTime).
+# ---- Qt-style date formatter (Qt.formatDateTime).
 
 _TOKEN = re.compile(r"''|'[^']*'|dddd|ddd|dd|d|MMMM|MMM|MM|M|yyyy|yy|HH|H|hh|h|mm|m|ss|s|AP|ap|A|a")
 
 
 def format_qt(when, fmt):
-    """Formata `when` (datetime) com um formato de data do Qt. Suporta os
-    tokens que o Omarchy usa, texto entre aspas simples e '' como aspa, mais
-    'ww' (semana ISO, que o Qt não tem e o Omarchy substitui antes)."""
+    """Format `when` (datetime) with a Qt date format. Supports the tokens
+    Omarchy uses, single-quoted literals and '' as a quote, plus 'ww' (ISO
+    week, which Qt lacks and Omarchy substitutes beforehand)."""
     fmt = fmt.replace("ww", "'" + pad2(iso_week(when.year, when.month - 1, when.day)) + "'")
     ampm = bool(re.search(r"AP|ap|A|a", re.sub(r"'[^']*'", "", fmt)))
     out = []
@@ -96,7 +95,7 @@ def format_qt(when, fmt):
 
 
 def _token(when, tok, ampm):
-    weekday = (when.weekday() + 1) % 7  # Python: segunda = 0
+    weekday = (when.weekday() + 1) % 7  # Python: Monday = 0
     hour12 = when.hour % 12 or 12
     if tok == "''":
         return "'"
@@ -115,7 +114,7 @@ def _token(when, tok, ampm):
         "yy": pad2(when.year % 100),
         "HH": pad2(when.hour),
         "H": str(when.hour),
-        # No Qt, h/hh são 12h quando o formato tem AM/PM.
+        # In Qt, h/hh are 12-hour when the format has AM/PM.
         "hh": pad2(hour12 if ampm else when.hour),
         "h": str(hour12 if ampm else when.hour),
         "mm": pad2(when.minute),
@@ -129,7 +128,7 @@ def _token(when, tok, ampm):
     }[tok]
 
 
-# ---- Datas. Meses são 0-based (0 = janeiro), como no Model.js.
+# ---- Dates. Months are 0-based (0 = January), as in Model.js.
 
 def pad2(value):
     n = int(value)
@@ -174,8 +173,8 @@ def week_start_setting_name(index):
 
 
 def toggled_week_start(index):
-    """Alterna entre as duas convenções comuns: segunda <-> domingo. Qualquer
-    outro início vai para segunda no primeiro toggle."""
+    """Flip between the two common conventions: Monday <-> Sunday. Any other
+    start goes to Monday on the first toggle."""
     return 0 if normalized_week_start(index, 1) == 1 else 1
 
 
@@ -197,7 +196,7 @@ def days_in_year(year):
 
 
 def year_progress(year, month, day):
-    """Dias inteiros já passados / dias do ano: 1º de janeiro = 0%."""
+    """Whole days done / days in the year: January 1 = 0%."""
     total = days_in_year(year)
     return max(0.0, min(1.0, (day_of_year(year, month, day) - 1) / total))
 
@@ -211,7 +210,7 @@ def _int_text(value):
 
 
 def parse_birth_year(value, current_year):
-    """Ano com 4 dígitos, não futuro, no máximo 120 anos atrás; 0 = não definido."""
+    """Four-digit year, not in the future, at most 120 years ago; 0 = unset."""
     text = _int_text(value)
     if not re.fullmatch(r"\d{4}", text):
         return 0
@@ -255,8 +254,8 @@ def life_progress_percent(age, expectancy):
 
 
 def month_grid(year, month, week_start, today_key):
-    """Sempre 6 linhas de 7 dias: o popup tem a mesma altura em todo mês.
-    Cada linha leva o número da semana ISO da quinta-feira dela."""
+    """Always 6 rows of 7 days, so the popup has the same height every month.
+    Each row carries the ISO week number of its Thursday."""
     start = normalized_week_start(week_start, 1)
     first = dt.date(year, month + 1, 1)
     first_weekday = (first.weekday() + 1) % 7

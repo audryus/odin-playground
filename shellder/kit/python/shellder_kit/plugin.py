@@ -1,4 +1,4 @@
-"""Runtime do protocolo do Shellder (ver shellder/README.md)."""
+"""Shellder protocol runtime (see shellder/README.md)."""
 
 import json
 import os
@@ -12,12 +12,12 @@ from .theme import Theme
 
 
 class Plugin:
-    """Base de um plugin. Sobrescreva os on_* e chame run().
+    """Plugin base class. Override the on_* methods and call run().
 
-    Estado disponível depois do primeiro "config":
+    State available after the first "config":
       self.theme     Theme
       self.bar       {"position": "bottom", "size": 26}
-      self.settings  a entrada do plugin no shell.json (sem o "id")
+      self.settings  the plugin's shell.json entry (without "id")
     """
 
     def __init__(self):
@@ -29,13 +29,13 @@ class Plugin:
         self._last = {}
         self._configured = False
 
-    # ---- para sobrescrever ------------------------------------------------
+    # ---- override ---------------------------------------------------------
 
     def on_start(self):
-        """Uma vez, antes do laço (o primeiro config pode chegar depois)."""
+        """Once, before the loop (the first config may arrive later)."""
 
     def on_config(self, ev):
-        """Tema, barra ou preferências mudaram (também no primeiro config)."""
+        """Theme, bar or settings changed (also on the first config)."""
 
     def on_click(self, ev):
         """ev: button (left/middle/right), monitor, bar, item, segment."""
@@ -46,7 +46,7 @@ class Plugin:
     def on_hover(self, ev):
         """ev: hovered (bool), monitor."""
 
-    # ---- estado ----------------------------------------------------------
+    # ---- state ------------------------------------------------------------
 
     @property
     def position(self):
@@ -60,11 +60,11 @@ class Plugin:
         v = self.settings.get(key)
         return default if v is None else v
 
-    # ---- saída -----------------------------------------------------------
+    # ---- output -----------------------------------------------------------
 
     def emit(self, monitor=None, **fields):
-        """Atualiza o item (de todos os monitores, ou só de `monitor`).
-        Linhas iguais à anterior não são reenviadas."""
+        """Update the item (on every output, or only on `monitor`).
+        Lines identical to the previous one are not re-sent."""
         update = dict(fields)
         if monitor:
             update["monitor"] = monitor
@@ -76,7 +76,7 @@ class Plugin:
         self._write(update)
 
     def save_settings(self, values):
-        """Grava preferências na entrada do plugin no shell.json."""
+        """Save settings into the plugin's shell.json entry."""
         self.settings.update(values)
         self._write({"settings": values})
 
@@ -84,10 +84,10 @@ class Plugin:
         sys.stdout.write(json.dumps(obj, ensure_ascii=False) + "\n")
         sys.stdout.flush()
 
-    # ---- tempo e processos -------------------------------------------------
+    # ---- timers and processes -----------------------------------------------
 
     def every(self, seconds, fn, now=False):
-        """Chama fn() a cada `seconds` (fn devolver False para)."""
+        """Call fn() every `seconds` (fn returning False stops it)."""
         def tick():
             return fn() is not False
         if now:
@@ -98,7 +98,7 @@ class Plugin:
         return GLib.timeout_add(int(seconds * 1000), lambda: fn() and False)
 
     def run_cmd(self, argv, callback=None, stdin=None):
-        """Roda argv sem bloquear; callback(ok, stdout, stderr)."""
+        """Run argv without blocking; callback(ok, stdout, stderr)."""
         if isinstance(argv, str):
             argv = ["sh", "-c", argv]
         flags = Gio.SubprocessFlags.STDOUT_PIPE | Gio.SubprocessFlags.STDERR_PIPE
@@ -122,17 +122,17 @@ class Plugin:
         return proc
 
     def run_detached(self, argv):
-        """Dispara e esquece (apps, menus do Omarchy)."""
+        """Fire and forget (apps, Omarchy menus)."""
         if isinstance(argv, str):
             argv = shlex.split(argv)
         try:
             subprocess.Popen(argv, start_new_session=True, stdin=subprocess.DEVNULL,
                              stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
         except OSError as e:
-            print("%s: não rodei %s: %s" % (self.name(), argv, e), file=sys.stderr)
+            print("%s: could not run %s: %s" % (self.name(), argv, e), file=sys.stderr)
 
     def watch_lines(self, argv, on_line, on_exit=None):
-        """Processo de longa duração; on_line(str) por linha do stdout."""
+        """Long-running process; on_line(str) for each stdout line."""
         try:
             proc = Gio.Subprocess.new(argv, Gio.SubprocessFlags.STDOUT_PIPE)
         except GLib.Error as e:
@@ -159,7 +159,7 @@ class Plugin:
     def name(self):
         return os.environ.get("SHELLDER_PLUGIN_ID", type(self).__name__)
 
-    # ---- laço --------------------------------------------------------------
+    # ---- loop ---------------------------------------------------------------
 
     def _on_stdin(self, fd, cond):
         try:
@@ -167,7 +167,7 @@ class Plugin:
         except BlockingIOError:
             return True
         if not chunk:
-            self.loop.quit()  # o Shellder saiu
+            self.loop.quit()  # Shellder exited
             return False
         self._buf += chunk
         while b"\n" in self._buf:
@@ -187,7 +187,7 @@ class Plugin:
             settings = ev.get("settings")
             self.settings = settings if isinstance(settings, dict) else {}
             self._configured = True
-            self._last.clear()  # reenviar: posição/tema podem mudar o desenho
+            self._last.clear()  # re-send: position/theme may change the drawing
             self.on_config(ev)
         elif kind == "click":
             self.on_click(ev)
@@ -201,7 +201,7 @@ class Plugin:
             os.set_blocking(0, False)
             GLib.io_add_watch(0, GLib.IO_IN | GLib.IO_HUP, self._on_stdin)
         except OSError:
-            pass  # stdin não é pipe (rodando à mão)
+            pass  # stdin is not a pipe (run by hand)
         self.on_start()
         try:
             self.loop.run()

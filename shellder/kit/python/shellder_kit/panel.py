@@ -1,23 +1,23 @@
-"""Popup no padrão do KeyboardPanel do Omarchy (Ui/KeyboardPanel.qml), em
+"""Popup following Omarchy's KeyboardPanel (Ui/KeyboardPanel.qml), in
 GTK4 + gtk4-layer-shell:
 
-  - uma layer que cobre a área útil do monitor do clique (exclusive zone 0:
-    a barra fica de fora e continua clicável), com o card dentro, encostado
-    na barra e centrado no item; clique fora do card fecha;
-  - nos outros monitores, uma layer transparente sem teclado que só fecha;
-  - teclado EXCLUSIVE por 75 ms para ganhar o foco, depois ON_DEMAND
-    (EXCLUSIVE o tempo todo faz o Hyprland mandar todo o ponteiro para a
-    layer e os cliques de fechar nos outros monitores não chegam);
-  - nunca fecha por perder o foco (o foco muda no caminho do mouse).
+  - one layer covering the usable area of the clicked output (exclusive
+    zone 0: the bar stays outside and clickable) with the card inside, next to
+    the bar and centered on the item; a click outside the card closes it;
+  - on the other outputs, a transparent keyboard-less layer that only closes;
+  - keyboard EXCLUSIVE for 75 ms to take focus, then ON_DEMAND (permanent
+    EXCLUSIVE makes Hyprland route all pointer input to the layer, so the
+    closing clicks on the other outputs never arrive);
+  - never closes on focus loss (focus changes on the way to the card).
 
-Uso:
+Usage:
 
     from shellder_kit import panel as P
 
     class MyPanel(P.Panel):
-        def build(self, card):      # monta o conteúdo (uma vez)
+        def build(self, card):      # build the content (once)
             card.append(P.section("Devices"))
-        def refresh(self):          # atualiza a cada abertura / quando quiser
+        def refresh(self):          # update on every open / whenever needed
             ...
 
     self.panel = MyPanel(self, "shellder-audio", width=340)
@@ -34,8 +34,8 @@ _css_theme = None
 
 
 def import_gtk():
-    """Carrega GTK4 + layer-shell. A libgtk4-layer-shell precisa ser carregada
-    antes da libwayland-client, por isso o CDLL vem antes do import do Gtk."""
+    """Load GTK4 + layer-shell. libgtk4-layer-shell must be loaded before
+    libwayland-client, hence the CDLL before importing Gtk."""
     global Gtk, Gdk, GLib, LayerShell
     if Gtk is not None:
         return True
@@ -49,7 +49,7 @@ def import_gtk():
         from gi.repository import Gdk as _Gdk, GLib as _GLib, Gtk as _Gtk
         from gi.repository import Gtk4LayerShell as _LayerShell
     except (OSError, ImportError, ValueError) as e:
-        print("shellder_kit: sem GTK4/gtk4-layer-shell, popup desligado: %s" % e, file=sys.stderr)
+        print("shellder_kit: no GTK4/gtk4-layer-shell, popups disabled: %s" % e, file=sys.stderr)
         return False
     Gtk, Gdk, GLib, LayerShell = _Gtk, _Gdk, _GLib, _LayerShell
     Gtk.init()
@@ -57,7 +57,7 @@ def import_gtk():
 
 
 def apply_css(theme, extra=""):
-    """(Re)aplica o CSS do tema no display (um provider por processo)."""
+    """(Re)apply the theme CSS to the display (one provider per process)."""
     global _css_provider, _css_theme
     if not import_gtk():
         return
@@ -70,8 +70,8 @@ def apply_css(theme, extra=""):
 
 
 def hypr_gap():
-    """Distância do popup até a barra: o gaps_out do Hyprland, como o
-    Style.gapsOut do Omarchy."""
+    """Popup distance from the bar: Hyprland's gaps_out, like Omarchy's
+    Style.gapsOut."""
     try:
         out = subprocess.run(["hyprctl", "-j", "getoption", "general:gaps_out"],
                              capture_output=True, text=True, timeout=1).stdout
@@ -80,7 +80,7 @@ def hypr_gap():
         return 8
 
 
-# ---- widgets no estilo do Omarchy -------------------------------------------
+# ---- widgets in Omarchy's style -------------------------------------------
 
 def label(text="", *classes, xalign=None, **kw):
     lbl = Gtk.Label(label=text, **kw)
@@ -105,8 +105,8 @@ def separator():
 
 
 def hero(icon, title="", meta="", detail="", trailing=None):
-    """PanelHero: ícone grande, título em negrito, meta em versalete, pílula de
-    detalhe e um controle opcional à direita. Devolve (box, widgets)."""
+    """PanelHero: large icon, bold title, small-caps meta, detail pill and an
+    optional trailing control. Returns (box, widgets)."""
     box = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=14)
     icon_lbl = label(icon, "sk-hero-icon", valign=Gtk.Align.CENTER)
     labels = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=2, hexpand=True,
@@ -167,7 +167,7 @@ def button(text, callback, tooltip=None):
 
 
 def switch(active, callback):
-    """ToggleSwitch. callback(bool) quando o usuário alterna."""
+    """ToggleSwitch. callback(bool) when the user toggles it."""
     sw = Gtk.Switch(active=bool(active), valign=Gtk.Align.CENTER)
     sw.add_css_class("sk-switch")
     sw.set_cursor_from_name("pointer")
@@ -181,7 +181,7 @@ def switch(active, callback):
 
 
 def set_switch(sw, active):
-    """Muda o switch sem disparar o callback."""
+    """Change the switch without firing the callback."""
     if sw.get_active() == bool(active):
         return
     sw._sk_guard = True
@@ -190,7 +190,7 @@ def set_switch(sw, active):
 
 
 def slider(value, on_change, minimum=0.0, maximum=1.0, step=0.05):
-    """PanelSlider. on_change(valor) enquanto arrasta."""
+    """PanelSlider. on_change(value) while dragging."""
     sc = Gtk.Scale.new_with_range(Gtk.Orientation.HORIZONTAL, minimum, maximum, step)
     sc.add_css_class("sk-slider")
     sc.set_draw_value(False)
@@ -213,7 +213,7 @@ def set_slider(sc, value):
 
 
 def row(*children, on_click=None, selected=False, spacing=10, tooltip=None):
-    """Linha de lista com hover/seleção (dispositivo, rede...)."""
+    """List row with hover/selection (device, network...)."""
     box = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=spacing)
     box.add_css_class("sk-row")
     if selected:
@@ -247,7 +247,7 @@ def clear(box):
         child = nxt
 
 
-# ---- painel -------------------------------------------------------------------
+# ---- panel --------------------------------------------------------------------
 
 class Panel:
     PADDING = 14  # Style.spacing.popupPadding
@@ -264,16 +264,16 @@ class Panel:
         self.gap = 8
         self.event = None
 
-    # ---- para sobrescrever ------------------------------------------------
+    # ---- override ---------------------------------------------------------
 
     def build(self, card):
-        """Monta o conteúdo no card (Gtk.Box vertical). Uma vez."""
+        """Build the content into the card (vertical Gtk.Box). Once."""
 
     def refresh(self):
-        """Atualiza o conteúdo. Chamado a cada abertura."""
+        """Update the content. Called on every open."""
 
     def on_key(self, keyval, char):
-        """Tecla sem tratamento padrão (Esc fecha). True = consumida."""
+        """A key without default handling (Esc closes). True = consumed."""
         return False
 
     def on_open(self):
@@ -321,7 +321,7 @@ class Panel:
         if self.window is not None:
             apply_css(self.plugin.theme, self.css)
 
-    # ---- interno ------------------------------------------------------------
+    # ---- internals ----------------------------------------------------------
 
     def _prime_done(self):
         if self.opened:
@@ -399,7 +399,7 @@ class Panel:
         monitor = self._monitor(connector)
         if monitor is not None:
             LayerShell.set_monitor(win, monitor)
-        # Zera as margens antes de medir: o measure do GTK4 inclui margens.
+        # Reset margins before measuring: GTK4's measure includes margins.
         for m in ("start", "end", "top", "bottom"):
             getattr(card, "set_margin_" + m)(0)
         pw = card.measure(Gtk.Orientation.HORIZONTAL, -1)[1]

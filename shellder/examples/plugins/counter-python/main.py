@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
-"""Plugin de exemplo do Shellder em Python.
+"""Example Shellder plugin in Python.
 
-stdout: uma atualização JSON por linha. stdin: um evento JSON por linha.
+stdout: one JSON update per line. stdin: one JSON event per line.
 """
 import json
 import sys

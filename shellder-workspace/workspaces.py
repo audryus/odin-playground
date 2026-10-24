@@ -1,19 +1,19 @@
 #!/usr/bin/env python3
-"""shellder-workspace — workspaces do Hyprland por monitor na barra do Shellder.
+"""shellder-workspace — Hyprland workspaces per output on the Shellder bar.
 
-Porte do omarchy.workspaces (/usr/share/omarchy/shell/plugins/bar/widgets/
-Workspaces.qml), mas por monitor, como o skald-bar: cada barra mostra os
-workspaces daquele monitor — os presos a ele por regra (workspace = N,
-monitor:X) mais os que existem nele.
+Port of omarchy.workspaces (/usr/share/omarchy/shell/plugins/bar/widgets/
+Workspaces.qml), but per output like the skald-bar prototype: each bar shows
+that output's workspaces — the ones bound to it by rule (workspace = N,
+monitor:X) plus the ones currently on it.
 
-  workspace ativo do monitor   glifo 󱓻
-  ocupado                      número, opacidade 1
-  vazio                        número, opacidade 0.5
-  clique                       vai para o workspace
-  scroll                       anterior/próximo workspace daquele monitor
+  active workspace of the output   glyph 󱓻
+  occupied                         number, opacity 1
+  empty                            number, opacity 0.5
+  click                            focus the workspace
+  scroll                           previous/next workspace of that output
 
-Só biblioteca padrão. Protocolo do Shellder: uma linha JSON por monitor no
-stdout ({"monitor": ..., "segments": [...]}), eventos JSON no stdin.
+Standard library only. Shellder protocol: one JSON line per output on stdout
+({"monitor": ..., "segments": [...]}), JSON events on stdin.
 """
 
 import json
@@ -22,11 +22,11 @@ import selectors
 import socket
 import sys
 
-FOCUSED_GLYPH = "\U000F14FB"  # o mesmo do Omarchy ("󱓻")
-SEGMENT_WIDTH = 20            # Style.space(20) do Omarchy
-MAX_ID = 10                   # o Omarchy mostra até o 10 (como "0")
+FOCUSED_GLYPH = "\U000F14FB"  # the same as Omarchy ("󱓻")
+SEGMENT_WIDTH = 20            # Omarchy's Style.space(20)
+MAX_ID = 10                   # Omarchy shows up to 10 (as "0")
 
-# Eventos do socket2 que mudam o que a barra mostra.
+# socket2 events that change what the bar shows.
 REFRESH_EVENTS = {
     "workspace", "workspacev2", "focusedmon", "focusedmonv2",
     "createworkspace", "createworkspacev2", "destroyworkspace", "destroyworkspacev2",
@@ -44,7 +44,7 @@ def socket_path(name):
 
 
 def request(cmd):
-    """Um comando no socket de request do Hyprland; devolve a resposta."""
+    """One command on Hyprland's request socket; returns the reply."""
     with socket.socket(socket.AF_UNIX, socket.SOCK_STREAM) as s:
         s.connect(socket_path(".socket.sock"))
         s.sendall(cmd.encode())
@@ -65,26 +65,26 @@ def query(cmd):
 
 
 def focus_workspace(ws_id):
-    # Hyprland >= 0.56 com config em Lua só aceita dispatch como expressão Lua;
-    # o formato antigo fica de reserva para versões anteriores.
+    # Hyprland >= 0.56 with a Lua config only accepts dispatch as a Lua
+    # expression; the old format is the fallback for earlier versions.
     reply = request('dispatch hl.dsp.focus({ workspace = "%s" })' % ws_id)
     if not reply.startswith("ok"):
         reply = request("dispatch workspace %s" % ws_id)
     if not reply.startswith("ok"):
-        print("shellder-workspace: não troquei para %s: %s" % (ws_id, reply.strip()), file=sys.stderr)
+        print("shellder-workspace: could not switch to %s: %s" % (ws_id, reply.strip()), file=sys.stderr)
 
 
 def label(ws_id, name):
     if name and name != str(ws_id):
-        return name  # workspace com nome
+        return name  # named workspace
     return "0" if ws_id == 10 else str(ws_id)
 
 
 class Workspaces:
     def __init__(self):
-        self.last = {}     # monitor -> linha emitida (para não repetir)
-        self.ids = {}      # monitor -> [ids na ordem]
-        self.active = {}   # monitor -> id ativo
+        self.last = {}     # monitor -> last emitted line (avoid repeats)
+        self.ids = {}      # monitor -> [ids in order]
+        self.active = {}   # monitor -> active id
 
     def refresh(self):
         monitors = query("monitors")
@@ -148,7 +148,7 @@ def main():
     try:
         events.connect(socket_path(".socket2.sock"))
     except OSError as e:
-        print("shellder-workspace: sem socket de eventos do Hyprland: %s" % e, file=sys.stderr)
+        print("shellder-workspace: no Hyprland event socket: %s" % e, file=sys.stderr)
         sys.exit(1)
     events.setblocking(False)
     os.set_blocking(0, False)
@@ -158,7 +158,7 @@ def main():
     try:
         sel.register(0, selectors.EVENT_READ, "stdin")
     except (PermissionError, ValueError):
-        pass  # stdin não é pipe (rodando à mão com < arquivo): só mostra
+        pass  # stdin is not a pipe (run by hand with < file): display only
 
     ws.refresh()
     hypr_buf, stdin_buf = b"", b""
@@ -168,7 +168,7 @@ def main():
             if key.data == "hypr":
                 data = events.recv(65536)
                 if not data:
-                    sys.exit(1)  # Hyprland saiu; o Shellder reinicia o plugin
+                    sys.exit(1)  # Hyprland exited; Shellder restarts the plugin
                 hypr_buf += data
                 *lines, hypr_buf = hypr_buf.split(b"\n")
                 for line in lines:
@@ -181,7 +181,7 @@ def main():
                 except BlockingIOError:
                     continue
                 if not data:
-                    return  # o Shellder saiu
+                    return  # Shellder exited
                 stdin_buf += data
                 *lines, stdin_buf = stdin_buf.split(b"\n")
                 for line in lines:
@@ -189,7 +189,7 @@ def main():
                         ws.handle(json.loads(line))
                     except ValueError:
                         pass
-        # Uma rajada de eventos (abrir uma janela gera vários) vira um refresh só.
+        # A burst of events (opening a window emits several) becomes one refresh.
         if dirty:
             ws.refresh()
 

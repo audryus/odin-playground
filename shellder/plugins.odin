@@ -9,23 +9,23 @@ import "core:sys/posix"
 import "core:time"
 import "gui:skald"
 
-// Plugins externos: cada pasta em <config_dir>/plugins/ com um manifest.json
-// (mesmo formato dos plugins do Omarchy). O Shellder roda o executável do
-// `entryPoints.barWidget` como um processo filho e conversa por linhas:
+// External plugins: each folder in <config_dir>/plugins/ with a manifest.json
+// (same format as Omarchy plugins). Shellder runs the `entryPoints.barWidget`
+// executable as a child process and talks to it line by line:
 //
-//   plugin -> Shellder (stdout): uma atualização por linha. Um objeto JSON
+//   plugin -> Shellder (stdout): one update per line. A JSON object
 //     {"text", "icon", "color", "visible", "segments", "monitor", "settings"}
-//     (campos ausentes mantêm o valor anterior; "monitor" restringe a
-//     atualização à barra desse monitor; "settings" é gravado na entrada do
-//     plugin no shell.json) ou qualquer outra linha, que vira o texto.
-//   Shellder -> plugin (stdin): um evento JSON por linha:
+//     (missing fields keep their previous value; "monitor" limits the update
+//     to that output's bar; "settings" is saved to the plugin's shell.json
+//     entry) or any other line, which becomes the text.
+//   Shellder -> plugin (stdin): one JSON event per line:
 //     {"event":"config", "bar":{...}, "theme":{...}, "settings":{...}}
-//         ao iniciar, ao trocar o tema e quando a entrada dele muda
+//         on start, on theme change and whenever its entry changes
 //     {"event":"click","button":"left|middle|right","monitor":"DP-1", "bar":{...}, "item":{...}}
 //     {"event":"scroll","direction":"up|down","monitor":"DP-1", "bar":{...}, "item":{...}}
 //
-// Se o processo morrer ele é reiniciado com backoff (1s, 2s, 4s... até 30s).
-// O README.md tem a especificação completa.
+// A process that dies is restarted with backoff (1s, 2s, 4s... up to 30s).
+// README.md has the full specification.
 
 KIND_BAR_WIDGET :: "bar-widget"
 
@@ -34,19 +34,19 @@ RESTART_MAX    :: 30 * time.Second
 HEALTHY_UPTIME :: 30 * time.Second
 MAX_LINE       :: 64 * 1024
 
-// Segment é um botão dentro do item (ex.: um workspace). O clique informa o id.
+// Segment is a button inside the item (e.g. a workspace). Clicks carry its id.
 Segment :: struct {
 	id, text, icon, color: string,
 	tooltip: string,
-	font:    string, // token de tamanho do tema ("caption", "body", "iconFont"...) ou px
-	opacity: f32, // 0..1 (padrão 1)
-	width:   f32, // px lógicos; 0 = o do conteúdo
+	font:    string, // theme size token ("caption", "body", "iconFont"...) or px
+	opacity: f32, // 0..1 (default 1)
+	width:   f32, // logical px; 0 = fit the content
 }
 
 Plugin_View :: struct {
 	text, icon, color: string,
 	tooltip: string,
-	font:    string, // tamanho do texto: token do tema ou px (padrão "body")
+	font:    string, // text size: theme token or px (default "body")
 	visible:  bool,
 	segments: [dynamic]Segment,
 }
@@ -65,7 +65,7 @@ segments_clear :: proc(segs: ^[dynamic]Segment) {
 	clear(segs)
 }
 
-// plugin_view_for: o que mostrar na barra do monitor `monitor`.
+// plugin_view_for: what to show on output `monitor`'s bar.
 plugin_view_for :: proc(p: ^Plugin, monitor: string) -> ^Plugin_View {
 	if v, ok := &p.per_monitor[monitor]; ok { return v }
 	return &p.view
@@ -80,60 +80,60 @@ Plugin :: struct {
 	default_section: Section,
 	manifest_icon:   string,
 
-	// estado exibido (atualizado pelo plugin): `view` vale para todas as
-	// barras; uma atualização com "monitor" vai para per_monitor[monitor],
-	// que então substitui `view` naquele monitor.
+	// displayed state (updated by the plugin): `view` applies to every bar; an
+	// update with "monitor" goes to per_monitor[monitor], which then replaces
+	// `view` on that output.
 	view:        Plugin_View,
 	per_monitor: map[string]Plugin_View,
 
-	// processo
+	// process
 	pid:        i32,
 	in_fd:      i32,
 	out_fd:     i32,
 	started_at: time.Time,
 	restart_at: time.Time,
 	backoff:    time.Duration,
-	reaping:    bool, // saiu (EOF) e ainda não foi recolhido
+	reaping:    bool, // exited (EOF) and not reaped yet
 
 	// hot reload (plugins_sync)
-	tree_mtime:    time.Time, // da última vez que (re)carregamos
-	pending_mtime: time.Time, // mudança vista, esperando assentar
+	tree_mtime:    time.Time, // when we last (re)loaded
+	pending_mtime: time.Time, // change seen, waiting for it to settle
 	change_seen:   time.Time,
 	line_buf:   [dynamic]u8,
 
-	// Em que barras o ponteiro está sobre o item (para o evento "hover").
+	// Which bars have the pointer over the item (for the "hover" event).
 	hovered_on: map[string]bool,
 
-	// {"settings": {...}} recebidos e ainda não gravados no shell.json
-	// (heap; o main aplica e libera).
+	// {"settings": {...}} received and not yet saved to shell.json
+	// (heap; main applies and frees them).
 	settings_updates: [dynamic]json.Object,
 }
 
-// ---- descoberta e hot reload ------------------------------------------------
+// ---- discovery and hot reload -----------------------------------------------
 //
-// plugins_sync compara <config_dir>/plugins/ com os plugins carregados — chamada
-// na partida e a cada segundo:
-//   - pasta nova com manifest válido  -> plugin carregado (e iniciado)
-//   - pasta removida                  -> plugin parado e descarregado
-//   - qualquer arquivo da pasta mudou -> manifest relido e processo reiniciado
-//     (depois de RELOAD_DEBOUNCE sem novas mudanças, para não pegar um arquivo
-//     no meio da gravação)
-//   - id entrou/saiu de "disabled"    -> parado/iniciado
-// Ignora .git, __pycache__, node_modules, .cache e temporários de editor: um
-// plugin não deve gravar arquivos na própria pasta, ou vai se reiniciar.
+// plugins_sync compares <config_dir>/plugins/ with the loaded plugins — called
+// at startup and every second:
+//   - new folder with a valid manifest -> plugin loaded (and started)
+//   - folder removed                   -> plugin stopped and unloaded
+//   - any file in the folder changed   -> manifest re-read, process restarted
+//     (after RELOAD_DEBOUNCE without further changes, so a file is not caught
+//     half-written)
+//   - id added to/removed from "disabled" -> stopped/started
+// Ignores .git, __pycache__, node_modules, .cache and editor temp files: a
+// plugin must not write files into its own folder or it will keep restarting.
 
 RELOAD_DEBOUNCE :: 500 * time.Millisecond
 
 Plugin_Set :: struct {
 	plugins: [dynamic]^Plugin,
-	// Pastas sem manifest válido, com o mtime da árvore quando falharam: só
-	// tentamos (e avisamos) de novo quando algo nelas mudar.
+	// Folders without a valid manifest, with the tree mtime when they failed:
+	// retried (and reported) only when something in them changes.
 	bad_dirs: map[string]time.Time,
 }
 
 Plugin_Sync :: struct {
-	start:          [dynamic]^Plugin, // iniciar com o config atual
-	layout_changed: bool,             // plugins entraram/saíram: refazer layout
+	start:          [dynamic]^Plugin, // start with the current config
+	layout_changed: bool,             // plugins came or went: rebuild the layout
 }
 
 plugins_sync :: proc(set: ^Plugin_Set, cfg: ^Config) -> (out: Plugin_Sync) {
@@ -142,11 +142,11 @@ plugins_sync :: proc(set: ^Plugin_Set, cfg: ^Config) -> (out: Plugin_Sync) {
 	seen := make(map[string]bool, len(dirs), context.temp_allocator)
 	for d in dirs { seen[d] = true }
 
-	// Removidos.
+	// Removed.
 	for i := len(set.plugins) - 1; i >= 0; i -= 1 {
 		p := set.plugins[i]
 		if seen[p.dir] { continue }
-		fmt.printfln("shellder: plugin %s removido", p.id)
+		fmt.printfln("shellder: plugin %s removed", p.id)
 		plugin_stop(p)
 		ordered_remove(&set.plugins, i)
 		plugin_free(p)
@@ -162,11 +162,11 @@ plugins_sync :: proc(set: ^Plugin_Set, cfg: ^Config) -> (out: Plugin_Sync) {
 		m := tree_mtime(d)
 
 		if p == nil {
-			// Novo (ou que falhou antes e mudou desde então).
+			// New (or failed before and changed since).
 			if bad, was_bad := set.bad_dirs[d]; was_bad && bad == m { continue }
 			q, ok := manifest_load(d)
 			if ok && plugin_by_id(set, q.id) != nil {
-				fmt.eprintfln("shellder: %s: id %q repetido; ignorando", d, q.id)
+				fmt.eprintfln("shellder: %s: duplicate id %q; ignoring", d, q.id)
 				plugin_free(q)
 				ok = false
 			}
@@ -183,7 +183,7 @@ plugins_sync :: proc(set: ^Plugin_Set, cfg: ^Config) -> (out: Plugin_Sync) {
 			continue
 		}
 
-		// Mudou: espera assentar e recarrega.
+		// Changed: wait for it to settle, then reload.
 		if m != p.tree_mtime {
 			if m != p.pending_mtime {
 				p.pending_mtime = m
@@ -198,10 +198,10 @@ plugins_sync :: proc(set: ^Plugin_Set, cfg: ^Config) -> (out: Plugin_Sync) {
 			}
 		}
 
-		// disabled no shell.json.
+		// disabled in shell.json.
 		disabled := config_is_disabled(cfg, p.id)
 		if disabled && plugin_running(p) {
-			fmt.printfln("shellder: plugin %s desabilitado", p.id)
+			fmt.printfln("shellder: plugin %s disabled", p.id)
 			plugin_stop(p)
 		} else if !disabled && !plugin_running(p) && !slice.contains(out.start[:], p) {
 			append(&out.start, p)
@@ -210,7 +210,7 @@ plugins_sync :: proc(set: ^Plugin_Set, cfg: ^Config) -> (out: Plugin_Sync) {
 	return
 }
 
-// kit_dir: <pasta do Shellder>/kit, a partir do executável (build/shellder).
+// kit_dir: <Shellder folder>/kit, derived from the executable (build/shellder).
 kit_dir :: proc() -> string {
 	@(static) cached: string
 	if cached != "" { return cached }
@@ -218,7 +218,7 @@ kit_dir :: proc() -> string {
 	n := posix.readlink("/proc/self/exe", &buf[0], len(buf))
 	exe := n > 0 ? string(buf[:n]) : ""
 	dir := exe
-	for _ in 0..<2 { // build/shellder -> build -> raiz
+	for _ in 0..<2 { // build/shellder -> build -> root
 		if i := strings.last_index_byte(dir, '/'); i >= 0 { dir = dir[:i] }
 	}
 	cached = strings.concatenate({dir, "/kit"})
@@ -241,25 +241,25 @@ plugin_by_id :: proc(set: ^Plugin_Set, id: string) -> ^Plugin {
 	return nil
 }
 
-// plugin_reload relê o manifest e para o processo (o chamador reinicia).
-// Com manifest inválido o plugin continua como estava. Devolve true se
-// recarregou.
+// plugin_reload re-reads the manifest and stops the process (the caller
+// restarts it). With an invalid manifest the plugin stays as it was. Returns
+// true if it reloaded.
 @(private = "file")
 plugin_reload :: proc(set: ^Plugin_Set, p: ^Plugin) -> bool {
 	q, ok := manifest_load(p.dir)
 	if !ok {
-		fmt.eprintfln("shellder: plugin %s: manifest inválido após a mudança; mantendo o anterior", p.id)
+		fmt.eprintfln("shellder: plugin %s: invalid manifest after the change; keeping the previous one", p.id)
 		return false
 	}
 	if q.id != p.id && plugin_by_id(set, q.id) != nil {
-		fmt.eprintfln("shellder: plugin %s: novo id %q já existe; mantendo o anterior", p.id, q.id)
+		fmt.eprintfln("shellder: plugin %s: new id %q already exists; keeping the previous one", p.id, q.id)
 		plugin_free(q)
 		return false
 	}
-	fmt.printfln("shellder: plugin %s mudou; recarregando", q.id)
+	fmt.printfln("shellder: plugin %s changed; reloading", q.id)
 	plugin_stop(p)
-	// Troca só o que vem do manifest; o estado exibido fica até o processo
-	// novo mandar o dele.
+	// Swap only what comes from the manifest; the displayed state stays until
+	// the new process sends its own.
 	delete(p.id); delete(p.name); delete(p.manifest_icon)
 	for a in p.argv { delete(a) }
 	delete(p.argv)
@@ -289,8 +289,8 @@ plugin_free :: proc(p: ^Plugin) {
 	free(p)
 }
 
-// plugin_dirs lista as pastas de plugins (symlinks para pastas contam: o
-// `make install` dos plugins aponta para o repositório), em ordem.
+// plugin_dirs lists the plugin folders (symlinks to folders count: the
+// plugins' `make install` points at the repository), sorted.
 @(private = "file")
 plugin_dirs :: proc(root: string) -> []string {
 	out := make([dynamic]string, context.temp_allocator)
@@ -309,7 +309,7 @@ plugin_dirs :: proc(root: string) -> []string {
 	return out[:]
 }
 
-// tree_mtime: o mtime mais recente da pasta do plugin e de tudo dentro dela.
+// tree_mtime: the newest mtime of the plugin folder and everything in it.
 @(private = "file")
 tree_mtime :: proc(dir: string, depth := 0) -> (newest: time.Time) {
 	if fi, err := os.stat(dir, context.temp_allocator); err == nil { newest = fi.modification_time }
@@ -344,23 +344,23 @@ manifest_load :: proc(dir: string) -> (p: ^Plugin, ok: bool) {
 	path := strings.concatenate({dir, "/manifest.json"}, context.temp_allocator)
 	data, rerr := os.read_entire_file(path, context.temp_allocator)
 	if rerr != nil {
-		fmt.eprintfln("shellder: %s: sem manifest.json; ignorando", dir)
+		fmt.eprintfln("shellder: %s: no manifest.json; ignoring", dir)
 		return
 	}
 	root, perr := json.parse(data, allocator = context.temp_allocator)
 	if perr != nil {
-		fmt.eprintfln("shellder: %s: JSON inválido (%v)", path, perr)
+		fmt.eprintfln("shellder: %s: invalid JSON (%v)", path, perr)
 		return
 	}
 	m, is_obj := root.(json.Object)
 	if !is_obj {
-		fmt.eprintfln("shellder: %s: o manifest deve ser um objeto", path)
+		fmt.eprintfln("shellder: %s: the manifest must be an object", path)
 		return
 	}
 	fail :: proc(path, msg: string) { fmt.eprintfln("shellder: %s: %s", path, msg) }
 
 	id, _ := m["id"].(json.String)
-	if id == "" { fail(path, "falta \"id\""); return }
+	if id == "" { fail(path, "missing \"id\""); return }
 
 	kinds, _ := m["kinds"].(json.Array)
 	has_bar := false
@@ -368,11 +368,11 @@ manifest_load :: proc(dir: string) -> (p: ^Plugin, ok: bool) {
 		if s, _ := k.(json.String); s == KIND_BAR_WIDGET { has_bar = true }
 	}
 	if !has_bar {
-		fail(path, "kinds não inclui \"bar-widget\" (único tipo suportado); ignorando")
+		fail(path, "kinds does not include \"bar-widget\" (the only supported kind); ignoring")
 		return
 	}
 
-	// entryPoints.barWidget: "arquivo" (executável) ou ["cmd", "arg", ...].
+	// entryPoints.barWidget: "file" (an executable) or ["cmd", "arg", ...].
 	argv := make([dynamic]string)
 	entry, _ := m["entryPoints"].(json.Object)
 	#partial switch v in entry["barWidget"] {
@@ -385,7 +385,7 @@ manifest_load :: proc(dir: string) -> (p: ^Plugin, ok: bool) {
 		}
 	}
 	if len(argv) == 0 || argv[0] == "" {
-		fail(path, "falta entryPoints.barWidget (string ou array)")
+		fail(path, "missing entryPoints.barWidget (string or array)")
 		return
 	}
 
@@ -412,8 +412,8 @@ manifest_load :: proc(dir: string) -> (p: ^Plugin, ok: bool) {
 	return p, true
 }
 
-// plugin_start inicia o processo e manda o evento "config" (config_line) como
-// primeira linha do stdin.
+// plugin_start starts the process and sends the "config" event (config_line)
+// as the first stdin line.
 plugin_start :: proc(p: ^Plugin, cfg: ^Config, config_line: string) {
 	argv := make([]cstring, len(p.argv) + 1, context.temp_allocator)
 	for a, i in p.argv { argv[i] = strings.clone_to_cstring(a, context.temp_allocator) }
@@ -421,14 +421,14 @@ plugin_start :: proc(p: ^Plugin, cfg: ^Config, config_line: string) {
 		fmt.ctprintf("SHELLDER_PLUGIN_ID=%s", p.id),
 		fmt.ctprintf("SHELLDER_PLUGIN_DIR=%s", p.dir),
 		fmt.ctprintf("SHELLDER_CONFIG_DIR=%s", cfg.dir),
-		// Kit de apoio a plugins (kit/python/shellder_kit, ...), ao lado do binário.
+		// Plugin support kit (kit/python/shellder_kit, ...), next to the binary.
 		fmt.ctprintf("SHELLDER_KIT=%s", kit_dir()),
 		nil,
 	}
 	cwd := strings.clone_to_cstring(p.dir, context.temp_allocator)
 	pid := sh_spawn(raw_data(argv), cwd, &env[0], &p.in_fd, &p.out_fd)
 	if pid < 0 {
-		fmt.eprintfln("shellder: plugin %s: falha ao iniciar %v", p.id, p.argv)
+		fmt.eprintfln("shellder: plugin %s: failed to start %v", p.id, p.argv)
 		plugin_schedule_restart(p)
 		return
 	}
@@ -439,15 +439,15 @@ plugin_start :: proc(p: ^Plugin, cfg: ^Config, config_line: string) {
 	plugin_send_line(p, config_line)
 }
 
-// plugin_send_line escreve uma linha no stdin sem bloquear: se o plugin não
-// lê e o pipe enche, a linha é descartada em vez de travar a barra.
+// plugin_send_line writes one stdin line without blocking: if the plugin does
+// not read and the pipe fills up, the line is dropped instead of freezing the bar.
 plugin_send_line :: proc(p: ^Plugin, line: string) {
 	if p.in_fd < 0 || line == "" { return }
 	sh_write(p.in_fd, raw_data(line), i32(len(line)))
 }
 
-// plugin_stop encerra o processo (SIGTERM no grupo) sem esperar: o pid vai
-// para `zombies` e é recolhido por plugins_reap.
+// plugin_stop ends the process (SIGTERM to the group) without waiting: the pid
+// goes to `zombies` and is reaped by plugins_reap.
 plugin_stop :: proc(p: ^Plugin) {
 	if p.pid > 0 {
 		sh_kill_group(p.pid)
@@ -484,7 +484,7 @@ plugin_schedule_restart :: proc(p: ^Plugin) {
 	p.backoff = min(p.backoff * 2, RESTART_MAX)
 }
 
-// plugin_read consome o stdout do plugin. Devolve true se algo visível mudou.
+// plugin_read consumes the plugin's stdout. Returns true if anything visible changed.
 plugin_read :: proc(p: ^Plugin) -> (changed: bool) {
 	if p.out_fd < 0 { return }
 	chunk: [4096]u8
@@ -495,15 +495,15 @@ plugin_read :: proc(p: ^Plugin) -> (changed: bool) {
 			continue
 		}
 		if n == 0 {
-			// EOF: o processo fechou o stdout (normalmente porque saiu).
-			// Se ele só fechou o stdout e continua vivo, encerra o grupo.
-			fmt.eprintfln("shellder: plugin %s terminou; reiniciando em %v", p.id, p.backoff)
+			// EOF: the process closed stdout (usually because it exited).
+			// If it only closed stdout and is still alive, end the group.
+			fmt.eprintfln("shellder: plugin %s exited; restarting in %v", p.id, p.backoff)
 			sh_kill_group(p.pid)
 			plugin_close_fds(p)
 			p.reaping = true
 			plugin_schedule_restart(p)
 		}
-		break // n < 0: EAGAIN, nada mais por agora
+		break // n < 0: EAGAIN, nothing more for now
 	}
 
 	for {
@@ -513,13 +513,13 @@ plugin_read :: proc(p: ^Plugin) -> (changed: bool) {
 		remove_range(&p.line_buf, 0, nl + 1)
 	}
 	if len(p.line_buf) > MAX_LINE {
-		fmt.eprintfln("shellder: plugin %s: linha maior que %d bytes; descartada", p.id, MAX_LINE)
+		fmt.eprintfln("shellder: plugin %s: line longer than %d bytes; dropped", p.id, MAX_LINE)
 		clear(&p.line_buf)
 	}
 	return
 }
 
-// json_font aceita "font": "caption" (token) ou "font": 13 (px).
+// json_font accepts "font": "caption" (token) or "font": 13 (px).
 @(private = "file")
 json_font :: proc(v: json.Value) -> (string, bool) {
 	#partial switch f in v {
@@ -545,12 +545,12 @@ plugin_apply_line :: proc(p: ^Plugin, line: string) -> bool {
 	root, err := json.parse_string(trimmed, allocator = context.temp_allocator)
 	obj, is_obj := root.(json.Object)
 	if err != nil || !is_obj {
-		fmt.eprintfln("shellder: plugin %s: JSON inválido: %s", p.id, trimmed)
+		fmt.eprintfln("shellder: plugin %s: invalid JSON: %s", p.id, trimmed)
 		return false
 	}
 
-	// "monitor": a atualização vale só para a barra desse monitor. A primeira
-	// vez copia o estado geral como ponto de partida.
+	// "monitor": the update applies only to that output's bar. The first time it
+	// copies the shared state as a starting point.
 	v := &p.view
 	if mon, ok := obj["monitor"].(json.String); ok && mon != "" {
 		if _, has := p.per_monitor[mon]; !has {
@@ -603,9 +603,8 @@ plugin_apply_line :: proc(p: ^Plugin, line: string) -> bool {
 	return true
 }
 
-// plugin_tick recolhe processos que saíram e reinicia os que já podem.
-// plugin_tick recolhe o processo se ele saiu. Devolve true quando já é hora
-// de reiniciá-lo (o main chama plugin_start com o config atual).
+// plugin_tick reaps the process if it exited. Returns true when it is time to
+// restart it (main calls plugin_start with the current config).
 plugin_tick :: proc(p: ^Plugin) -> bool {
 	if p.reaping && p.pid > 0 {
 		if sh_reap(p.pid) != 0 {
@@ -618,13 +617,13 @@ plugin_tick :: proc(p: ^Plugin) -> bool {
 
 Plugin_Event_Kind :: enum { Click, Scroll, Hover }
 
-// Plugin_Event carrega, além do clique, onde ele aconteceu: o retângulo do
-// item na barra e o tamanho da barra (px lógicos, relativos ao canto
-// superior esquerdo da barra). Com isso e a posição da barra o plugin sabe
-// onde abrir um popup.
+// Plugin_Event carries, besides the click, where it happened: the item rect
+// in the bar and the bar size (logical px, relative to the bar's top-left
+// corner). With that and the bar position the plugin knows where to open a
+// popup.
 Plugin_Event :: struct {
 	kind:     Plugin_Event_Kind,
-	segment:  string, // id do segmento clicado ("" = o item)
+	segment:  string, // id of the clicked segment ("" = the item)
 	button:   skald.Mouse_Button,
 	dir:      int,
 	monitor:  string,

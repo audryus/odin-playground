@@ -8,16 +8,16 @@ import "core:sys/posix"
 import "core:time"
 import "gui:skald"
 
-// Shellder — uma barra para Hyprland feita com Skald. A barra é só a barra:
-// vazia por padrão, tudo o que aparece nela vem de plugins (plugins.odin) —
-// processos externos em qualquer linguagem, descritos por um manifest.json,
-// que conversam por stdin/stdout. Visual (cores, fonte, tamanho, cantos) segue
-// o tema do Omarchy (omarchy.odin), que também é repassado aos plugins.
+// Shellder — a Hyprland bar built with Skald. The bar is only the bar: empty
+// by default, everything on it comes from plugins (plugins.odin) — external
+// processes in any language, described by a manifest.json, talking over
+// stdin/stdout. Look (colors, font, size, corners) follows the Omarchy theme
+// (omarchy.odin), which is also forwarded to plugins.
 //
-// O `skald.run` usa SDL, que não sabe criar layer-surfaces. Por isso usamos o
-// backend embedded do Skald: native/wlbar.c cria uma zwlr_layer_surface_v1 por
-// monitor e entregamos cada uma ao mesmo Renderer como um swapchain a mais.
-// Input e loop de frames são nossos.
+// `skald.run` uses SDL, which cannot create layer surfaces, so we use Skald's
+// embedded backend: native/wlbar.c creates one zwlr_layer_surface_v1 per
+// output and each one is handed to the same Renderer as an extra swapchain.
+// Input and the frame loop are ours.
 
 Msg :: union {
 	Plugin_Input,
@@ -25,11 +25,11 @@ Msg :: union {
 
 Plugin_Input :: struct {
 	plugin: ^Plugin,
-	ev:     Plugin_Event, // ev.monitor no temp_allocator: update roda antes do free_all
+	ev:     Plugin_Event, // ev.monitor lives in temp_allocator: update runs before free_all
 }
 
-// update escreve no stdin do plugin — num app Skald normal seria um Command,
-// mas o loop embedded aqui não os processa.
+// update writes to the plugin's stdin — in a regular Skald app this would be a
+// Command, but the embedded loop here does not process those.
 update :: proc(app: ^App, m: Msg) {
 	switch v in m {
 	case Plugin_Input:
@@ -41,13 +41,13 @@ update :: proc(app: ^App, m: Msg) {
 
 Bar :: struct {
 	win:   ^skald.Window,
-	name:  string, // nome do output (DP-1, HDMI-A-1...)
+	name:  string, // output name (DP-1, HDMI-A-1...)
 	dirty: bool,
 
-	// Duplo clique em área vazia alterna bar.transparent (como no Omarchy).
-	// O backend embedded não conta cliques, então medimos aqui.
-	over_item:  bool,      // o ponteiro está sobre um item de plugin neste frame
-	last_press: time.Tick, // último clique esquerdo em área vazia
+	// Double click on an empty area toggles bar.transparent (as in Omarchy).
+	// The embedded backend does not count clicks, so we measure them here.
+	over_item:  bool,      // pointer is over a plugin item this frame
+	last_press: time.Tick, // last left click on an empty area
 	press_pos:  [2]f32,
 }
 
@@ -67,25 +67,25 @@ App :: struct {
 
 	omarchy:     Omarchy_Theme,
 	theme:       skald.Theme,
-	size:        int,    // espessura efetiva da barra
-	theme_json:  string, // tema serializado para o evento "config"
-	wb_position: Position, // borda em que as surfaces estão ancoradas agora
-	pending_theme: bool,   // reaplicar o tema no próximo ciclo (transparência mudou)
+	size:        int,    // effective bar thickness
+	theme_json:  string, // theme serialized for the "config" event
+	wb_position: Position, // edge the surfaces are currently anchored to
+	pending_theme: bool,   // re-apply the theme next cycle (transparency changed)
 
 	font:        skald.Font,
-	font_file:   string, // arquivo carregado em `font`
-	em_factor:   f32,    // tamanho em px do Omarchy -> size do Skald (font_em_factor)
-	font_data:   [dynamic][]u8, // bytes de cada fonte carregada; vivem com o renderer
+	font_file:   string, // file loaded into `font`
+	em_factor:   f32,    // Omarchy px size -> Skald size (font_em_factor)
+	font_data:   [dynamic][]u8, // bytes of every loaded font; they live as long as the renderer
 }
 
 vertical :: proc(app: ^App) -> bool {
 	return app.cfg.position == .Left || app.cfg.position == .Right
 }
 
-// build_layout monta as seções a partir de bar.layout do shell.json, na
-// ordem. Plugins instalados que ainda não estão no layout (nem em
-// "disabled") entram no fim da defaultSection deles e o shell.json é gravado,
-// como o "omarchy plugin add --enable" faz.
+// build_layout builds the sections from shell.json's bar.layout, in order.
+// Installed plugins not yet in the layout (nor in "disabled") are appended to
+// their defaultSection and shell.json is saved, like
+// "omarchy plugin add --enable" does.
 build_layout :: proc(app: ^App) {
 	for s in Section { clear(&app.layout[s]) }
 	placed := make(map[string]bool, 16, context.temp_allocator)
@@ -94,7 +94,7 @@ build_layout :: proc(app: ^App) {
 			id := entry_id(v)
 			if id == "" || config_is_disabled(&app.cfg, id) { continue }
 			if placed[id] {
-				fmt.eprintfln("shellder: %q aparece mais de uma vez no layout; mantendo a primeira", id)
+				fmt.eprintfln("shellder: %q appears more than once in the layout; keeping the first", id)
 				continue
 			}
 			placed[id] = true
@@ -102,7 +102,7 @@ build_layout :: proc(app: ^App) {
 			for p in app.plugins.plugins {
 				if p.id == id { append(&app.layout[s], p); found = true }
 			}
-			if !found { fmt.eprintfln("shellder: plugin %q do shell.json não está instalado", id) }
+			if !found { fmt.eprintfln("shellder: plugin %q from shell.json is not installed", id) }
 		}
 	}
 	added := false
@@ -111,14 +111,14 @@ build_layout :: proc(app: ^App) {
 		if _, in_layout := config_entry(&app.cfg, p.id); in_layout { continue }
 		append(&app.layout[p.default_section], p)
 		config_add_entry(&app.cfg, p.default_section, p.id)
-		fmt.printfln("shellder: plugin %s adicionado em bar.layout.%s", p.id, SECTION_NAMES[p.default_section])
+		fmt.printfln("shellder: plugin %s added to bar.layout.%s", p.id, SECTION_NAMES[p.default_section])
 		added = true
 	}
 	if added { config_save(&app.cfg) }
 }
 
-// sync_plugins aplica plugins_sync: inicia os novos/recarregados e refaz o
-// layout se o conjunto mudou.
+// sync_plugins applies plugins_sync: starts new/reloaded plugins and rebuilds
+// the layout if the set changed.
 sync_plugins :: proc(app: ^App) {
 	res := plugins_sync(&app.plugins, &app.cfg)
 	if res.layout_changed { build_layout(app) }
@@ -126,8 +126,8 @@ sync_plugins :: proc(app: ^App) {
 	if res.layout_changed || len(res.start) > 0 { mark_all_dirty(app) }
 }
 
-// config_line_for monta o evento "config" do plugin: barra, tema e as
-// preferências da entrada dele no shell.json.
+// config_line_for builds the plugin's "config" event: bar, theme and the
+// settings from its shell.json entry.
 config_line_for :: proc(app: ^App, p: ^Plugin) -> string {
 	return fmt.tprintf(`{{"event":"config","bar":{{"position":"%s","size":%d}},"theme":%s,"settings":%s}}` + "\n",
 		POSITION_NAMES[app.cfg.position], app.size, app.theme_json,
@@ -138,8 +138,8 @@ send_config_all :: proc(app: ^App) {
 	for p in app.plugins.plugins { plugin_send_line(p, config_line_for(app, p)) }
 }
 
-// apply_settings_updates grava no shell.json as preferências que os plugins
-// mandaram e devolve a cada um o "config" atualizado.
+// apply_settings_updates saves the settings plugins sent to shell.json and
+// sends each one its updated "config".
 apply_settings_updates :: proc(app: ^App) {
 	for p in app.plugins.plugins {
 		if len(p.settings_updates) == 0 { continue }
@@ -168,9 +168,9 @@ view :: proc(app: ^App, bar: ^Bar, ctx: ^skald.Ctx(Msg)) -> skald.View {
 	center := section(app, bar, ctx, .Center)
 	right  := section(app, bar, ctx, .Right)
 
-	// Três blocos: início e fim com flex(1) para o centro ficar realmente no
-	// centro. Como no Bar.qml do Omarchy: itens colados (cada um já tem a
-	// própria margem) e 8 px nas pontas.
+	// Three blocks: start and end with flex(1) so the center is truly centered.
+	// As in Omarchy's Bar.qml: items packed together (each has its own
+	// margin) and 8 px at both ends.
 	EDGE :: 8
 	if vertical(app) {
 		return skald.col(
@@ -196,10 +196,10 @@ view :: proc(app: ^App, bar: ^Bar, ctx: ^skald.Ctx(Msg)) -> skald.View {
 	)
 }
 
-// view_plugin desenha um item como os botões da barra do Omarchy
-// (Ui/WidgetButton.qml, BarIconButton.qml): sem fundo no hover — só o cursor
-// de mão —, texto com margem de 8.5 px, ícone sozinho num slot de iconSlot px
-// com a fonte iconFont, segmentos lado a lado.
+// view_plugin draws an item like Omarchy's bar buttons (Ui/WidgetButton.qml,
+// BarIconButton.qml): no hover background — only the hand cursor —, text
+// with an 8.5 px margin, an icon alone in an iconSlot-wide slot with the
+// iconFont size, segments side by side.
 view_plugin :: proc(app: ^App, p: ^Plugin, bar: ^Bar, ctx: ^skald.Ctx(Msg)) -> (skald.View, bool) {
 	pv := plugin_view_for(p, bar.name)
 	if !pv.visible || (pv.text == "" && pv.icon == "" && len(pv.segments) == 0) { return {}, false }
@@ -215,7 +215,7 @@ view_plugin :: proc(app: ^App, p: ^Plugin, bar: ^Bar, ctx: ^skald.Ctx(Msg)) -> (
 	parts := make([dynamic]skald.View, context.temp_allocator)
 	any_hover := false
 
-	// Ícone + texto: uma zona clicável.
+	// Icon + text: one clickable zone.
 	if pv.icon != "" || pv.text != "" {
 		id := skald.hash_id(p.id)
 		hovered := skald.widget_hovered(ctx, id)
@@ -226,8 +226,8 @@ view_plugin :: proc(app: ^App, p: ^Plugin, bar: ^Bar, ctx: ^skald.Ctx(Msg)) -> (
 		if pv.icon != "" { append(&inner, skald.text(pv.icon, color, icon_size, font = app.font)) }
 		child: skald.View
 		if vert {
-			// Na vertical cada linha do texto vira uma linha centrada, cortada
-			// na largura da barra (o clock usa "HH\n—\nmm").
+			// Vertically each text line becomes a centered line, clipped to
+			// the bar width (the clock uses "HH\n—\nmm").
 			it := pv.text
 			for line in strings.split_lines_iterator(&it) {
 				append(&inner, skald.text(line, color, text_size, font = app.font,
@@ -245,7 +245,7 @@ view_plugin :: proc(app: ^App, p: ^Plugin, bar: ^Bar, ctx: ^skald.Ctx(Msg)) -> (
 		append(&parts, clickable_zone(ctx, p, bar, id, child, hovered, ""))
 	}
 
-	// Segmentos: um botão por segmento, cada um com seu id no clique.
+	// Segments: one button per segment, each with its id in the click.
 	for sg in pv.segments {
 		id := skald.hash_id(fmt.tprintf("%s\x00%s", p.id, sg.id))
 		hovered := skald.widget_hovered(ctx, id)
@@ -275,8 +275,8 @@ view_plugin :: proc(app: ^App, p: ^Plugin, bar: ^Bar, ctx: ^skald.Ctx(Msg)) -> (
 		append(&parts, clickable_zone(ctx, p, bar, id, child, hovered, sg.id))
 	}
 
-	// "hover" para o plugin quando o ponteiro entra/sai do item nesta barra
-	// (o indicators do Omarchy revela os indicadores inativos assim).
+	// "hover" to the plugin when the pointer enters/leaves the item on this bar
+	// (Omarchy's indicators reveal the inactive ones this way).
 	if p.hovered_on[bar.name] != any_hover {
 		if _, had := p.hovered_on[bar.name]; !had {
 			p.hovered_on[strings.clone(bar.name)] = any_hover
@@ -293,8 +293,8 @@ view_plugin :: proc(app: ^App, p: ^Plugin, bar: ^Bar, ctx: ^skald.Ctx(Msg)) -> (
 	return skald.row(..parts[:], spacing = 0, cross_align = .Center), true
 }
 
-// clickable_zone envolve `child` numa zona e manda para o plugin os cliques e o
-// scroll sobre ela, com o retângulo da zona e o segmento (se houver).
+// clickable_zone wraps `child` in a zone and sends the plugin the clicks and
+// scrolls over it, with the zone rect and the segment (if any).
 clickable_zone :: proc(ctx: ^skald.Ctx(Msg), p: ^Plugin, bar: ^Bar, id: skald.Widget_ID,
                        child: skald.View, hovered: bool, segment: string) -> skald.View {
 	z := skald.zone(ctx, child, id)
@@ -333,15 +333,15 @@ target_for :: proc(app: ^App, w: ^skald.Window) -> ^skald.Window_Target {
 	return nil
 }
 
-// apply_theme (re)lê o tema do Omarchy e propaga: cores/tamanhos da barra,
-// espessura das surfaces, fonte e o evento "config" dos plugins.
+// apply_theme (re)reads the Omarchy theme and propagates it: bar colors and
+// sizes, surface thickness, font and the plugins' "config" event.
 apply_theme :: proc(app: ^App, tw: ^Theme_Watch) {
 	app.omarchy = theme_load(tw, app.cfg.transparent, app.cfg.position, vertical(app))
 	app.theme   = theme_to_skald(&app.omarchy)
 
 	size := vertical(app) ? app.omarchy.bar_size_vertical : app.omarchy.bar_size_horizontal
-	// Depois do wb_init: espessura ou borda mudaram (tema, ou bar.position no
-	// shell.json) -> reancora as barras existentes.
+	// After wb_init: thickness or edge changed (theme, or bar.position in
+	// shell.json) -> re-anchor the existing bars.
 	if app.size != 0 && (size != app.size || app.cfg.position != app.wb_position) {
 		wb_set_geometry(i32(size), i32(app.cfg.position))
 	}
@@ -355,16 +355,16 @@ apply_theme :: proc(app: ^App, tw: ^Theme_Watch) {
 	mark_all_dirty(app)
 }
 
-// em_size converte um tamanho do Omarchy (em px, como o Qt) para o `size` do
-// Skald na fonte carregada.
+// em_size converts an Omarchy size (em px, as in Qt) to Skald's `size` for
+// the loaded font.
 em_size :: proc(app: ^App, px: int) -> f32 {
 	f := app.em_factor
 	if f <= 0 { f = 1 }
 	return f32(px) * f
 }
 
-// load_font carrega a fonte do tema no renderer, com a Inter embutida do
-// Skald como fallback para glyphs que faltem nela.
+// load_font loads the theme font into the renderer, with Skald's bundled
+// Inter as fallback for missing glyphs.
 load_font :: proc(app: ^App) {
 	file := app.omarchy.font_file
 	if file == "" {
@@ -374,7 +374,7 @@ load_font :: proc(app: ^App) {
 	if file == app.font_file && app.font != 0 { return }
 	data, err := os.read_entire_file(file, context.allocator)
 	if err != nil {
-		fmt.eprintfln("shellder: não li a fonte %s: %v", file, err)
+		fmt.eprintfln("shellder: could not read font %s: %v", file, err)
 		app.font = skald.font_default(&app.r)
 		return
 	}
@@ -384,7 +384,7 @@ load_font :: proc(app: ^App) {
 	skald.font_add_fallback(&app.r, app.font, skald.font_default(&app.r))
 	delete(app.font_file)
 	app.font_file = strings.clone(file)
-	fmt.printfln("shellder: fonte %s (%s, em ×%.3f)", app.omarchy.font_family, file, app.em_factor)
+	fmt.printfln("shellder: font %s (%s, em ×%.3f)", app.omarchy.font_family, file, app.em_factor)
 }
 
 bar_configure :: proc(app: ^App, out: i32, w, h: i32) {
@@ -406,7 +406,7 @@ bar_configure :: proc(app: ^App, out: i32, w, h: i32) {
 		user                   = rawptr(uintptr(out)),
 		size_px                = size_px,
 		scale                  = scale,
-		// Sempre com alpha: bar.transparent pode ligar a qualquer momento.
+		// Always with alpha: bar.transparent may turn on at any time.
 		transparent            = true,
 	})
 	if !ok { return }
@@ -416,7 +416,7 @@ bar_configure :: proc(app: ^App, out: i32, w, h: i32) {
 	if !app.r_ready {
 		app.r.lazy_present = true
 		if !skald.renderer_init(&app.r, b.win) {
-			fmt.eprintln("shellder: renderer_init falhou")
+			fmt.eprintln("shellder: renderer_init failed")
 			posix.exit(1)
 		}
 		app.r_ready = true
@@ -424,14 +424,14 @@ bar_configure :: proc(app: ^App, out: i32, w, h: i32) {
 		app.font = 0
 		load_font(app)
 	} else if !skald.renderer_add_embedded_surface(&app.r, b.win, app.theme.color.bg) {
-		fmt.eprintfln("shellder: não consegui adicionar a surface de %s", b.name)
+		fmt.eprintfln("shellder: could not add the surface for %s", b.name)
 		free(b.win)
 		delete(b.name)
 		b^ = {}
 		wb_output_destroy(out)
 		return
 	}
-	fmt.printfln("shellder: barra em %s (%dx%d @%.0fx)", b.name, w, h, scale)
+	fmt.printfln("shellder: bar on %s (%dx%d @%.0fx)", b.name, w, h, scale)
 	b.dirty = true
 }
 
@@ -441,13 +441,13 @@ bar_close :: proc(app: ^App, out: i32) {
 		if len(app.r.targets) > 1 {
 			skald.renderer_remove_embedded_surface(&app.r, b.win)
 		} else {
-			// Último monitor: o Skald não remove o último target, então
-			// derrubamos o renderer inteiro; ele volta no próximo configure.
+			// Last output: Skald does not remove the last target, so we tear
+			// the whole renderer down; it comes back on the next configure.
 			skald.renderer_destroy(&app.r)
 			app.r = {}
 			app.r_ready = false
 		}
-		fmt.printfln("shellder: monitor %s saiu", b.name)
+		fmt.printfln("shellder: output %s removed", b.name)
 		free(b.win)
 		delete(b.name)
 	}
@@ -468,7 +468,7 @@ handle_wayland_events :: proc(app: ^App) {
 		case .Enter, .Motion:
 			if w != nil { skald.input_feed_pointer_motion(w, {f32(ev.x), f32(ev.y)}) }
 		case .Leave:
-			// Tira o ponteiro de cima de tudo para o hover sumir.
+			// Move the pointer off everything so hover clears.
 			if w != nil {
 				skald.input_feed_pointer_motion(w, {-10_000, -10_000})
 				for btn in skald.Mouse_Button {
@@ -510,17 +510,17 @@ render_bar :: proc(app: ^App, b: ^Bar) {
 		skald.render_overlays(&app.r)
 		skald.frame_end(&app.r)
 	}
-	// Cursor de mão sobre itens clicáveis, como o PointingHandCursor do Omarchy.
+	// Hand cursor over clickable items, like Omarchy's PointingHandCursor.
 	if mp := w.input.mouse_pos; mp.x >= 0 && mp.y >= 0 {
 		wb_set_cursor(b.over_item ? 1 : 0)
 	}
 	check_double_click(app, b)
-	skald.input_begin(w) // zera as bordas de input para o próximo frame
+	skald.input_begin(w) // reset input edges for the next frame
 	b.dirty = false
 }
 
-// check_double_click: dois cliques esquerdos rápidos fora dos itens alternam
-// a transparência da barra e gravam bar.transparent no shell.json.
+// check_double_click: two quick left clicks outside items toggle the bar's
+// transparency and save bar.transparent in shell.json.
 check_double_click :: proc(app: ^App, b: ^Bar) {
 	in_ := &b.win.input
 	if !in_.mouse_pressed[.Left] { return }
@@ -557,7 +557,7 @@ main :: proc() {
 
 	sync_plugins(app)
 	if len(app.plugins.plugins) == 0 {
-		fmt.printfln("shellder: nenhum plugin em %s; a barra fica vazia", app.cfg.plugins_dir)
+		fmt.printfln("shellder: no plugins in %s; the bar stays empty", app.cfg.plugins_dir)
 	}
 
 	if wb_init(i32(app.size), i32(app.cfg.position), "shellder") == 0 { posix.exit(1) }
@@ -583,24 +583,24 @@ main :: proc() {
 			if theme_changed(&tw) {
 				apply_theme(app, &tw)
 				send_config_all(app)
-				fmt.println("shellder: tema recarregado")
+				fmt.println("shellder: theme reloaded")
 			}
-			// shell.json editado à mão: relê tudo — layout, preferências,
-			// disabled, transparent e position — sem reiniciar.
+			// shell.json edited by hand: re-read everything — layout, settings,
+			// disabled, transparent and position — without restarting.
 			if config_changed_on_disk(&app.cfg) {
 				old_pos, old_transparent := app.cfg.position, app.cfg.transparent
 				if config_read(&app.cfg) {
 					if app.cfg.position != old_pos || app.cfg.transparent != old_transparent {
-						apply_theme(app, &tw) // tamanho/borda e fundo
+						apply_theme(app, &tw) // size/edge and background
 					}
 					sync_plugins(app)
 					build_layout(app)
 					send_config_all(app)
 					mark_all_dirty(app)
-					fmt.println("shellder: shell.json recarregado")
+					fmt.println("shellder: shell.json reloaded")
 				}
 			}
-			// Plugins novos, removidos ou com arquivos alterados.
+			// New or removed plugins, or plugins whose files changed.
 			sync_plugins(app)
 			next_theme_check = time.time_add(time.now(), THEME_CHECK)
 		}
@@ -624,8 +624,8 @@ main :: proc() {
 
 		free_all(context.temp_allocator)
 
-		// Espera por Wayland, stdout dos plugins, a próxima checagem do tema
-		// ou o próximo restart de plugin.
+		// Wait for Wayland, plugin stdout, the next theme check or the next
+		// plugin restart.
 		wake := next_theme_check
 		for p in app.plugins.plugins {
 			if p.reaping { wake = time.time_add(time.now(), 100 * time.Millisecond) }
@@ -645,12 +645,12 @@ main :: proc() {
 		}
 
 		if wb_before_poll() < 0 {
-			fmt.eprintln("shellder: conexão com o compositor caiu")
+			fmt.eprintln("shellder: lost the connection to the compositor")
 			break
 		}
 		posix.poll(raw_data(fds), posix.nfds_t(len(fds)), timeout)
 		if wb_after_poll(.IN in fds[0].revents ? 1 : 0) < 0 {
-			fmt.eprintln("shellder: conexão com o compositor caiu")
+			fmt.eprintln("shellder: lost the connection to the compositor")
 			break
 		}
 	}

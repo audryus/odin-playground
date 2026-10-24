@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Plugin de exemplo do Shellder em Bash: linhas que não são JSON viram o texto.
+# Example Shellder plugin in Bash: lines that are not JSON become the text.
 while true; do
     read -r one _ < /proc/loadavg
     echo "$one"

@@ -20,7 +20,7 @@ typedef struct {
 	struct wl_output             *output;
 	char                          name[64];
 	int32_t                       scale;
-	int                           done;     // recebeu o primeiro wl_output.done
+	int                           done;     // received the first wl_output.done
 	struct wl_surface            *surface;
 	struct zwlr_layer_surface_v1 *layer;
 	int                           closed;
@@ -41,7 +41,7 @@ static struct {
 	int32_t     size;
 	int32_t     position;
 	const char *ns;
-	int         ready; // globals iniciais já vieram
+	int         ready; // initial globals received
 
 	Output outputs[WB_MAX_OUTPUTS];
 	int    pointer_out;
@@ -100,8 +100,8 @@ static void create_bar(Output *o) {
 	zwlr_layer_surface_v1_set_keyboard_interactivity(o->layer,
 		ZWLR_LAYER_SURFACE_V1_KEYBOARD_INTERACTIVITY_NONE);
 	zwlr_layer_surface_v1_add_listener(o->layer, &layer_listener, o);
-	// Commit sem buffer: pede o primeiro configure. O swapchain Vulkan só é
-	// criado depois dele (no lado Odin).
+	// Commit without a buffer to request the first configure. The Vulkan
+	// swapchain is only created after it (on the Odin side).
 	wl_surface_commit(o->surface);
 }
 
@@ -128,7 +128,7 @@ static void apply_geometry(Output *o) {
 		         ZWLR_LAYER_SURFACE_V1_ANCHOR_RIGHT;
 		h = (uint32_t)S.size;
 	}
-	// 0 no eixo ancorado nas duas pontas = ocupa a borda inteira.
+	// 0 on an axis anchored at both ends = span the whole edge.
 	zwlr_layer_surface_v1_set_anchor(o->layer, anchor);
 	zwlr_layer_surface_v1_set_size(o->layer, w, h);
 	zwlr_layer_surface_v1_set_exclusive_zone(o->layer, S.size);
@@ -174,15 +174,15 @@ static const struct wl_output_listener output_listener = {
 
 // ---- wl_pointer ------------------------------------------------------------
 
-// Cursor atual (nome do tema de cursores) e o serial do último enter, que o
-// wl_pointer_set_cursor exige.
+// Current cursor (cursor theme name) and the serial of the last enter, which
+// wl_pointer_set_cursor requires.
 static const char *cursor_name = "default";
 static uint32_t    enter_serial;
 
 static void apply_cursor(void) {
 	if (!S.cursor_theme || !S.cursor_surface || !S.pointer) return;
 	struct wl_cursor *c = wl_cursor_theme_get_cursor(S.cursor_theme, cursor_name);
-	// Temas antigos usam os nomes X11.
+	// Older themes use the X11 names.
 	if (!c && strcmp(cursor_name, "pointer") == 0) c = wl_cursor_theme_get_cursor(S.cursor_theme, "hand2");
 	if (!c) c = wl_cursor_theme_get_cursor(S.cursor_theme, "default");
 	if (!c) c = wl_cursor_theme_get_cursor(S.cursor_theme, "left_ptr");
@@ -312,7 +312,7 @@ static void reg_global(void *d, struct wl_registry *reg, uint32_t name, const ch
 		S.layer_shell = wl_registry_bind(reg, name, &zwlr_layer_shell_v1_interface, minu(ver, 4));
 	} else if (strcmp(iface, wl_output_interface.name) == 0) {
 		if (ver < 4) {
-			fprintf(stderr, "wlbar: wl_output v%u sem evento name; ignorando\n", ver);
+			fprintf(stderr, "wlbar: wl_output v%u has no name event; ignoring\n", ver);
 		}
 		for (int i = 0; i < WB_MAX_OUTPUTS; i++) {
 			Output *o = &S.outputs[i];
@@ -325,7 +325,7 @@ static void reg_global(void *d, struct wl_registry *reg, uint32_t name, const ch
 			wl_output_add_listener(o->output, &output_listener, o);
 			return;
 		}
-		fprintf(stderr, "wlbar: monitores demais (máx %d)\n", WB_MAX_OUTPUTS);
+		fprintf(stderr, "wlbar: too many outputs (max %d)\n", WB_MAX_OUTPUTS);
 	}
 }
 
@@ -335,8 +335,8 @@ static void reg_global_remove(void *d, struct wl_registry *reg, uint32_t name) {
 		Output *o = &S.outputs[i];
 		if (!o->used || o->global != name || o->closed) continue;
 		o->closed = 1;
-		// Destruição real fica para wb_output_destroy: o Odin precisa largar o
-		// VkSurfaceKHR antes do wl_surface sumir.
+		// Actual teardown happens in wb_output_destroy: Odin must drop the
+		// VkSurfaceKHR before the wl_surface goes away.
 		push((wb_event){.type = WB_EV_CLOSED, .out = i});
 	}
 }
@@ -354,13 +354,13 @@ int wb_init(int32_t size, int32_t position, const char *ns) {
 	S.ns     = ns;
 	S.display = wl_display_connect(NULL);
 	if (!S.display) {
-		fprintf(stderr, "wlbar: não conectou no Wayland (WAYLAND_DISPLAY?)\n");
+		fprintf(stderr, "wlbar: could not connect to Wayland (WAYLAND_DISPLAY?)\n");
 		return 0;
 	}
 	S.registry = wl_display_get_registry(S.display);
 	wl_registry_add_listener(S.registry, &registry_listener, NULL);
 	wl_display_roundtrip(S.display); // globals
-	wl_display_roundtrip(S.display); // eventos dos outputs/seat
+	wl_display_roundtrip(S.display); // output/seat events
 
 	if (!S.compositor || !S.layer_shell) {
 		fprintf(stderr, "wlbar: compositor sem wl_compositor/zwlr_layer_shell_v1\n");
@@ -379,7 +379,7 @@ int wb_init(int32_t size, int32_t position, const char *ns) {
 	S.ready = 1;
 	for (int i = 0; i < WB_MAX_OUTPUTS; i++)
 		if (S.outputs[i].used) create_bar(&S.outputs[i]);
-	wl_display_roundtrip(S.display); // primeiros configures
+	wl_display_roundtrip(S.display); // first configures
 	return 1;
 }
 

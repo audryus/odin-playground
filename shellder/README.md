@@ -1,43 +1,43 @@
 # Shellder
 
-Uma barra para Hyprland, feita em Odin com [Skald](https://github.com/BuLEEto/Skald).
-A barra é só a barra: vem vazia, e tudo o que aparece nela vem de plugins,
-escritos em qualquer linguagem.
+A Hyprland bar written in Odin with [Skald](https://github.com/BuLEEto/Skald).
+The bar is only the bar: it starts empty, and everything on it comes from
+plugins written in any language.
 
-- Uma barra por monitor (layer-shell, em qualquer borda, com exclusive zone).
-- Segue o tema do Omarchy — cores, fonte, tamanho, cantos — e repassa o tema
-  resolvido para os plugins, para que popups e afins tenham o mesmo visual.
-- Plugins são processos externos descritos por um `manifest.json`.
+- One bar per output (layer-shell, any edge, with an exclusive zone).
+- Follows the Omarchy theme — colors, font, size, corners — and forwards the
+  resolved theme to plugins so popups and the like look the same.
+- Plugins are external processes described by a `manifest.json`.
 
-## Rodar
+## Run
 
 ```bash
-make run                # 1ª vez clona o Skald em vendor/, compila e executa
-make install-examples   # copia os plugins de exemplo para ~/.config/shellder/plugins
-pkill shellder          # encerra (os plugins são encerrados junto)
+make run                # first time clones Skald into vendor/, builds and runs
+make install-examples   # copies the example plugins into ~/.config/shellder/plugins
+pkill shellder          # quits (plugins are stopped with it)
 ```
 
-O build aplica os patches de `patches/` no Skald clonado em `vendor/` e
-recompila o shader com `glslc` (pacote `shaderc`). Hoje há um patch: o texto é
-misturado como no Qt (em sRGB), sem o "stem darkening" do Skald — sem ele a
-fonte sai mais grossa e mais clara que a da barra do Omarchy, apesar de ser a
-mesma fonte, tamanho e cor.
+The build applies `patches/` to the Skald clone in `vendor/` and recompiles
+the shader with `glslc` (package `shaderc`). There is one patch today: glyphs
+are blended like Qt does (in sRGB), without Skald's stem darkening — without
+it the text comes out bolder and brighter than the Omarchy bar's, even with
+the same font, size and color.
 
-## Configuração
+## Configuration
 
-Tudo fica em `~/.config/shellder/` (ou `$XDG_CONFIG_HOME/shellder`, ou
+Everything lives in `~/.config/shellder/` (or `$XDG_CONFIG_HOME/shellder`, or
 `$SHELLDER_CONFIG_DIR`):
 
 ```
 ~/.config/shellder/
 ├── shell.json
 └── plugins/
-    └── <pasta-do-plugin>/
+    └── <plugin-folder>/
         └── manifest.json
 ```
 
-`shell.json` tem o mesmo formato do `~/.config/omarchy/shell.json` (a parte
-`bar`). Se não existir, o Shellder cria:
+`shell.json` has the same shape as `~/.config/omarchy/shell.json` (its `bar`
+part). If missing, Shellder creates:
 
 ```json
 {
@@ -55,15 +55,14 @@ Tudo fica em `~/.config/shellder/` (ou `$XDG_CONFIG_HOME/shellder`, ou
 }
 ```
 
-| Chave             | Descrição |
-|-------------------|-----------|
-| `bar.position`    | `bottom`, `top`, `left` ou `right` |
-| `bar.transparent` | `true` deixa o fundo transparente e escolhe a cor do texto com o `omarchy-bar-text-color`, como o Omarchy. **Duplo clique numa área vazia da barra alterna** (e grava aqui) |
-| `bar.layout.*`    | Itens de cada seção, na ordem: `{"id": "<id do plugin>", <preferências>}` |
-| `disabled`        | ids de plugins instalados que não devem aparecer nem rodar |
+| Key               | Description |
+|-------------------|-------------|
+| `bar.position`    | `bottom`, `top`, `left` or `right` |
+| `bar.transparent` | `true` makes the background transparent and picks the text color with `omarchy-bar-text-color`, like Omarchy. **Double click an empty area of the bar to toggle it** (saved here) |
+| `bar.layout.*`    | Items of each section, in order: `{"id": "<plugin id>", <settings>}` |
+| `disabled`        | ids of installed plugins that must not show nor run |
 
-Cada item do layout é o **id de um plugin** mais as **preferências** dele, como
-no Omarchy:
+Each layout item is a **plugin id** plus its **settings**, as in Omarchy:
 
 ```json
 "center": [
@@ -71,69 +70,73 @@ no Omarchy:
 ]
 ```
 
-As preferências vão para o plugin no evento `config`; quando o plugin muda
-alguma (ex.: o clique direito do relógio troca o formato), o Shellder grava de
-volta na entrada. Um plugin instalado que ainda não está no layout (nem em
-`disabled`) é adicionado no fim da `defaultSection` do manifest e o arquivo é
-gravado. Para tirar um plugin da barra, ponha o id em `disabled`.
+Settings reach the plugin in the `config` event; when the plugin changes one
+(e.g. the clock's format), Shellder writes it back to the entry. An installed
+plugin not yet in the layout (nor in `disabled`) is appended to its manifest
+`defaultSection` and the file is saved. To remove a plugin from the bar, put
+its id in `disabled`.
 
-Em barra vertical (`left`/`right`), as seções viram `left` = topo,
-`center` = meio e `right` = base; o ícone fica em cima e cada linha do texto
-do plugin vira uma linha centrada, cortada na largura da barra.
+On a vertical bar (`left`/`right`) the sections become `left` = top,
+`center` = middle and `right` = bottom; the icon goes on top and each line of
+the plugin text becomes a centered line clipped to the bar width.
 
 ## Hot reload
 
-Nada exige reiniciar o Shellder (checagem a cada segundo):
+Nothing requires restarting Shellder (checked every second):
 
-| Mudança | O que acontece |
-|---------|----------------|
-| `shell.json` editado | layout, preferências, `disabled`, `transparent` e `position` aplicados na hora |
-| pasta nova em `plugins/` | plugin carregado, iniciado e adicionado ao layout |
-| pasta removida | plugin parado e tirado da barra |
-| qualquer arquivo de um plugin muda (código, manifest, binário recompilado) | só aquele plugin é reiniciado, 0,5 s depois da última mudança |
-| tema/fonte do Omarchy | barra e plugins atualizados |
+| Change | What happens |
+|--------|--------------|
+| `shell.json` edited | layout, settings, `disabled`, `transparent` and `position` applied immediately |
+| new folder in `plugins/` | plugin loaded, started and added to the layout |
+| folder removed | plugin stopped and removed from the bar |
+| any file of a plugin changes (code, manifest, rebuilt binary) | only that plugin restarts, 0.5 s after the last change |
+| Omarchy theme/font | bar and plugins updated |
 
-Para o reload de plugin, mudanças em `.git`, `__pycache__`, `node_modules`,
-`.cache`, `.venv` e temporários de editor são ignoradas. **Um plugin não deve
-gravar arquivos na própria pasta**, ou vai se reiniciar sem parar — use
-`SHELLDER_CONFIG_DIR`, `$XDG_STATE_HOME` ou `$XDG_CACHE_HOME`.
+For plugin reload, changes in `.git`, `__pycache__`, `node_modules`,
+`.cache`, `.venv` and editor temp files are ignored. **A plugin must not write
+files into its own folder** or it will keep restarting — use
+`SHELLDER_CONFIG_DIR`, `$XDG_STATE_HOME` or `$XDG_CACHE_HOME`.
 
-## Tema
+## Theme
 
-O Shellder resolve o tema como o shell do Omarchy faz
+Shellder resolves the theme the way the Omarchy shell does
 (`/usr/share/omarchy/shell/Commons/{Color,Style}.qml`):
 
-| O quê          | De onde |
-|----------------|---------|
-| Paleta         | `~/.local/state/omarchy/current/theme/colors.toml` (foreground, background, accent, urgent, muted, com os mesmos fallbacks `color0/4/7/8`, `red`) |
-| Superfícies    | `shell.toml` do tema + `~/.config/omarchy/shell.toml` por cima: `[bar]`, `[popups]`, `[controls]`, `[font]` (inclui `*-alpha` e referências como `hyprland.active-border`) |
-| Fonte          | alias `monospace` do fontconfig (o que `omarchy font set` troca), com a escala de tamanhos derivada de `[font] base-size` |
-| Tamanho        | `[bar] size-horizontal` / `size-vertical`, escalados pela fonte |
-| Cantos e borda | `decoration:rounding` e `general:border_size` do Hyprland |
+| What            | From |
+|-----------------|------|
+| Palette         | `~/.local/state/omarchy/current/theme/colors.toml` (foreground, background, accent, urgent, muted, with the same `color0/4/7/8`, `red` fallbacks) |
+| Surfaces        | the theme's `shell.toml` + `~/.config/omarchy/shell.toml` on top: `[bar]`, `[popups]`, `[controls]`, `[font]` (including `*-alpha` and references like `hyprland.active-border`) |
+| Font            | fontconfig's `monospace` alias (what `omarchy font set` changes), with the size scale derived from `[font] base-size` |
+| Size            | `[bar] size-horizontal` / `size-vertical` and the other `Style.bar` tokens, scaled by font size |
+| Corners, border | Hyprland's `decoration:rounding` and `general:border_size` |
 
-Não há cores, fonte ou tamanho próprios no Shellder: para mudar, mude o tema
-do Omarchy (ou o `~/.config/omarchy/shell.toml`). Os arquivos são vigiados:
-`omarchy theme set`, `omarchy font set` e edições no `shell.toml` atualizam a
-barra e os plugins em até 1 segundo. Fora do Omarchy valem os padrões do
-`Color.qml`.
+Shellder has no colors, font or size of its own: to change them, change the
+Omarchy theme (or `~/.config/omarchy/shell.toml`). The files are watched:
+`omarchy theme set`, `omarchy font set` and `shell.toml` edits update the bar
+and plugins within a second. Outside Omarchy the `Color.qml` defaults apply.
+
+Plugin items are drawn like Omarchy's bar buttons (`Ui/WidgetButton.qml`,
+`BarIconButton.qml`): no hover background, a hand cursor over clickable items,
+8.5 px text margins, icon-only items in an `iconSlot`-wide slot with the
+`iconFont` size, items packed with no spacing and 8 px at both bar ends.
 
 ## Plugins
 
-Um plugin é uma pasta em `plugins/` com um `manifest.json` (mesmo formato dos
-plugins do Omarchy) e um executável em qualquer linguagem. O Shellder inicia o
-executável uma vez, mantém ele rodando e conversa por **stdin/stdout, uma linha
-por mensagem**.
+A plugin is a folder in `plugins/` with a `manifest.json` (same format as
+Omarchy plugins) and an executable in any language. Shellder starts the
+executable once, keeps it running and talks to it over **stdin/stdout, one
+message per line**.
 
 ### manifest.json
 
 ```json
 {
   "schemaVersion": 1,
-  "id": "voce.meu-plugin",
-  "name": "Meu plugin",
+  "id": "you.my-plugin",
+  "name": "My plugin",
   "version": "1.0.0",
-  "author": "você",
-  "description": "O que ele faz",
+  "author": "you",
+  "description": "What it does",
   "kinds": ["bar-widget"],
   "entryPoints": {
     "barWidget": ["python3", "-u", "main.py"]
@@ -145,55 +148,58 @@ por mensagem**.
 }
 ```
 
-| Campo                         | Obrigatório | Descrição |
-|-------------------------------|:-----------:|-----------|
-| `id`                          | sim | Identificador único; é o `id` da entrada em `bar.layout` do `shell.json` |
-| `kinds`                       | sim | Precisa conter `"bar-widget"` (único tipo suportado por enquanto) |
-| `entryPoints.barWidget`       | sim | O que executar. String: caminho de um executável dentro da pasta (precisa de `chmod +x` e shebang). Array: comando + argumentos, procurado no `PATH` (`["node", "index.js"]`, `["./meu-binario"]`) |
-| `barWidget.icon`              | não | Ícone inicial: um ou mais caracteres. A fonte do Omarchy é uma Nerd Font, então glyphs de Nerd Font funcionam |
-| `barWidget.defaultSection`    | não | `left`, `center` ou `right` (padrão `right`); na barra vertical: topo, meio, base |
-| `name`, `version`, `author`, `description`, `schemaVersion`, `barWidget.displayName`, `barWidget.category` | não | Informativos |
+| Field                         | Required | Description |
+|-------------------------------|:--------:|-------------|
+| `id`                          | yes | Unique id; it is the `id` of the entry in `shell.json`'s `bar.layout` |
+| `kinds`                       | yes | Must include `"bar-widget"` (the only supported kind for now) |
+| `entryPoints.barWidget`       | yes | What to run. String: path of an executable inside the folder (needs `chmod +x` and a shebang). Array: command + arguments, looked up in `PATH` (`["node", "index.js"]`, `["./my-binary"]`) |
+| `barWidget.icon`              | no  | Initial icon: one or more characters. The Omarchy font is a Nerd Font, so Nerd Font glyphs work |
+| `barWidget.defaultSection`    | no  | `left`, `center` or `right` (default `right`); on a vertical bar: top, middle, bottom |
+| `name`, `version`, `author`, `description`, `schemaVersion`, `barWidget.displayName`, `barWidget.category` | no | Informational |
 
-O processo roda com o diretório do plugin como `cwd` e recebe as variáveis:
+The process runs with the plugin folder as `cwd` and gets these variables:
 
-| Variável                   | Valor |
-|----------------------------|-------|
-| `SHELLDER_PLUGIN_ID`       | o `id` do manifest |
-| `SHELLDER_PLUGIN_DIR`      | a pasta do plugin |
-| `SHELLDER_CONFIG_DIR`      | a pasta de config do Shellder |
+| Variable              | Value |
+|-----------------------|-------|
+| `SHELLDER_PLUGIN_ID`  | the manifest `id` |
+| `SHELLDER_PLUGIN_DIR` | the plugin folder |
+| `SHELLDER_CONFIG_DIR` | Shellder's config folder |
+| `SHELLDER_KIT`        | Shellder's plugin kit folder (see below) |
 
-O stderr do plugin vai para o stderr do Shellder.
+The plugin's stderr goes to Shellder's stderr.
 
 ### Plugin → Shellder (stdout)
 
-Cada linha é uma atualização. Pode ser um objeto JSON:
+Each line is an update. It can be a JSON object:
 
 ```json
-{"text": "23°C", "icon": "", "color": "accent", "visible": true}
+{"text": "23°C", "icon": "", "color": "accent", "tooltip": "Weather", "visible": true}
 ```
 
-| Campo     | Descrição |
-|-----------|-----------|
-| `text`    | Texto ao lado do ícone (`\n` separa linhas na barra vertical) |
-| `icon`    | Troca o ícone |
-| `color`   | `"#rrggbb[aa]"` ou um papel do tema: `foreground`, `muted`, `accent`, `urgent`, `active` |
-| `visible` | `false` esconde o item |
-| `segments` | Lista de botões dentro do item: `[{"id": "1", "text": "1", "icon": "", "color": "accent", "opacity": 0.5, "width": 20}]` (só `id` é obrigatório). Substitui a lista anterior. O clique num segmento traz `"segment": "<id>"` |
-| `monitor` | Conector (`"DP-1"`): a atualização vale só para a barra desse monitor. Sem ele, vale para todas as que não receberam atualização própria |
-| `settings` | Objeto com preferências a gravar na entrada do plugin no `shell.json` (`null` apaga a chave). O Shellder grava e manda um `config` novo |
+| Field      | Description |
+|------------|-------------|
+| `text`     | Text next to the icon (`\n` separates lines on a vertical bar) |
+| `icon`     | Replaces the icon |
+| `color`    | `"#rrggbb[aa]"` or a theme role: `foreground`, `muted`, `accent`, `urgent`, `active` |
+| `font`     | Text size: a token of the Omarchy type scale (`caption`, `bodySmall`, `body`, `title`, `icon`, `iconFont`, ...) or px |
+| `tooltip`  | Tooltip text |
+| `visible`  | `false` hides the item |
+| `segments` | Buttons inside the item: `[{"id": "1", "text": "1", "icon": "", "color": "accent", "opacity": 0.5, "width": 20, "font": "caption", "tooltip": "..."}]` (only `id` is required). Replaces the previous list. A click on a segment carries `"segment": "<id>"` |
+| `monitor`  | Output connector (`"DP-1"`): the update applies only to that output's bar. Without it, it applies to every bar that has not received its own |
+| `settings` | Settings to save in the plugin's `shell.json` entry (`null` deletes a key). Shellder saves them and sends a new `config` |
 
-Campos ausentes mantêm o valor anterior. **Qualquer linha que não começa com
-`{` vira o `text`**, então um script que só faz `echo` já funciona. Lembre de
-dar flush no stdout a cada linha (`print(..., flush=True)`, `python3 -u`,
-`fflush(stdout)`...).
+Missing fields keep their previous value. **Any line that does not start with
+`{` becomes the `text`**, so a script that just `echo`s already works.
+Remember to flush stdout after each line (`print(..., flush=True)`,
+`python3 -u`, `fflush(stdout)`...).
 
 ### Shellder → plugin (stdin)
 
-Um objeto JSON por linha.
+One JSON object per line.
 
-**`config`**: a primeira linha que o plugin recebe, e de novo sempre que o tema
-ou a entrada dele no `shell.json` muda. Traz a barra, o tema do Omarchy já
-resolvido e as preferências (`settings`: a entrada do layout sem o `id`):
+**`config`**: the first line the plugin receives, and again whenever the
+theme or its `shell.json` entry changes. It carries the bar, the resolved
+Omarchy theme and the settings (`settings`: the layout entry without `id`):
 
 ```json
 {"event": "config",
@@ -206,130 +212,134 @@ resolvido e as preferências (`settings`: a entrada do layout sem o `id`):
    "radius": 0,
    "colors":   {"foreground": "#a9b1d6ff", "background": "#1a1b26ff",
                 "accent": "#7aa2f7ff", "urgent": "#f7768eff", "muted": "#414868ff"},
-   "bar":      {"background": "#1a1b26ff", "text": "#a9b1d6ff", "active": "#f7768eff"},
+   "bar":      {"background": "#1a1b26ff", "text": "#a9b1d6ff", "active": "#f7768eff",
+                "sizeHorizontal": 26, "sizeVertical": 28, "iconSlot": 27,
+                "iconCanvas": 16, "iconFont": 13, "statusSlot": 21},
    "popup":    {"background": "#1a1b26ff", "text": "#a9b1d6ff",
                 "border": "#7aa2f7ff", "borderWidth": 2},
-   "controls": {"hover": "#a9b1d614", "hoverBorder": "#a9b1d640", "selected": "#a9b1d62e"}
+   "controls": {"normal": "...", "normalBorder": "...", "hover": "#a9b1d614",
+                "hoverBorder": "#a9b1d640", "selected": "#a9b1d62e", "...": "..."}
  },
  "settings": {"format": "ddd d MMM HH:mm"}}
 ```
 
-Cores em `#rrggbbaa`. Um plugin que abre janelas (popups, painéis) deve usar
-esses valores para ficar com o visual do Omarchy.
+Colors are `#rrggbbaa`. A plugin that opens windows (popups, panels) should
+use these values to look like Omarchy.
 
-**`click`** e **`scroll`**:
+**`click`**, **`scroll`** and **`hover`**:
 
 ```json
 {"event": "click", "button": "left", "monitor": "DP-1",
  "bar":  {"position": "bottom", "width": 1920, "height": 26},
  "item": {"x": 900, "y": 2, "width": 120, "height": 22}}
 {"event": "scroll", "direction": "up", "monitor": "DP-1", "bar": {...}, "item": {...}}
+{"event": "hover", "hovered": true, "monitor": "DP-1"}
 ```
 
-- `button`: `left`, `middle` ou `right`. `direction`: `up` ou `down`.
-- `segment`: o `id` do segmento clicado (só quando o clique foi num segmento).
-- `monitor`: o conector do monitor da barra.
-- `bar`: posição e tamanho da barra nesse monitor; `item`: retângulo do item
-  dentro da barra (px lógicos, a partir do canto superior esquerdo da barra).
-  É o que o plugin precisa para abrir um popup encostado na barra, alinhado ao
-  item.
+- `button`: `left`, `middle` or `right`. `direction`: `up` or `down`.
+- `segment`: the id of the clicked segment (only when the click hit one).
+- `monitor`: the connector of the bar's output.
+- `bar`: position and size of the bar on that output; `item`: the item rect
+  inside the bar (logical px, from the bar's top-left corner) — what a plugin
+  needs to open a popup next to the bar, aligned with the item.
+- `hover`: the pointer entered (`true`) or left (`false`) the item on that bar.
 
-Ler o stdin é opcional: se o plugin não lê e o pipe enche, as linhas são
-descartadas (a barra nunca trava por causa de um plugin).
+Reading stdin is optional: if the plugin does not read and the pipe fills up,
+lines are dropped (a plugin never freezes the bar).
 
-### Kit para plugins em Python
+### Python plugin kit
 
-O Shellder exporta `SHELLDER_KIT` (a pasta `kit/` ao lado do binário). Em
+Shellder exports `SHELLDER_KIT` (the `kit/` folder next to the binary). In
 Python:
 
 ```python
 import os, sys
 sys.path.insert(0, os.path.join(os.environ["SHELLDER_KIT"], "python"))
 from shellder_kit import Plugin
-from shellder_kit import panel as P   # só se o plugin tiver popup (GTK4)
+from shellder_kit import panel as P   # only if the plugin has a popup (GTK4)
 
-class Meu(Plugin):
+class Mine(Plugin):
     def on_config(self, ev): self.emit(icon="󰕾", tooltip="Volume")
     def on_click(self, ev):  self.panel.toggle(ev)
 
-Meu().run()
+Mine().run()
 ```
 
-- `Plugin`: laço do protocolo; `self.theme`, `self.bar`, `self.settings`;
-  `emit()` (não repete linhas iguais; `monitor=` para uma barra só),
-  `save_settings()`, `every()`, `later()`, `run_cmd()` (assíncrono),
-  `run_detached()`, `watch_lines()` (processo longo, linha a linha).
-- `panel.Panel`: o popup no padrão abaixo, já pronto — sobrescreva `build()`
-  e `refresh()`.
-- Widgets com o visual dos componentes do Omarchy: `hero`, `section`,
+- `Plugin`: the protocol loop; `self.theme`, `self.bar`, `self.settings`;
+  `emit()` (does not repeat identical lines; `monitor=` for a single bar),
+  `save_settings()`, `every()`, `later()`, `run_cmd()` (async),
+  `run_detached()`, `watch_lines()` (long-running process, line by line).
+- `panel.Panel`: the popup pattern below, ready to use — override `build()`
+  and `refresh()`.
+- Widgets with the look of the Omarchy components: `hero`, `section`,
   `separator`, `row`, `action_button`, `button`, `switch`, `slider`.
 
-### Popups e painéis
+### Popups and panels
 
-O Shellder não desenha nada além da barra. Um plugin que precisa de uma
-janela (um calendário, um menu) cria a própria layer-surface, com o toolkit
-que preferir, usando o `bar`/`item` do clique para posicionar e o tema do
-evento `config` para o visual. Siga o mesmo desenho do `KeyboardPanel.qml` do
-Omarchy — é o que permite clicar fora para fechar **e** usar o popup com o
-mouse e o teclado:
+A plugin that needs a window (a calendar, a device list) creates its own
+layer surface with the toolkit it prefers, using the click's `bar`/`item` to
+position it and the `config` theme to style it. Follow the same design as
+Omarchy's `KeyboardPanel.qml` — it is what allows clicking outside to close
+**and** using the popup with mouse and keyboard:
 
-1. **Uma layer que cobre a área útil do monitor** (âncora nas 4 bordas,
-   exclusive zone 0 — assim a barra fica de fora e continua clicável), com o
-   card desenhado dentro dela, encostado na barra e alinhado ao item. Clique
-   na layer fora do card fecha.
-2. **Nos outros monitores**, uma layer transparente igual, sem teclado, que
-   só fecha ao ser clicada.
-3. **Teclado: `exclusive` por ~75 ms ao abrir, depois `on_demand`.** O
-   exclusive inicial dá o foco ao popup; mantê-lo exclusive faz o Hyprland
-   mandar *todo* o ponteiro para a layer, e aí os cliques de fechar nos outros
-   monitores nunca chegam.
-4. Não feche ao perder o foco: no caminho do mouse até o card o foco pode
-   mudar.
-5. Clique no próprio item da barra com o popup aberto chega ao plugin como
-   `click` normal: trate como toggle.
+1. **One layer covering the output's usable area** (anchored on all 4 edges,
+   exclusive zone 0 — so the bar stays outside and clickable), with the card
+   drawn inside it, next to the bar and aligned with the item. A click on the
+   layer outside the card closes it.
+2. **On the other outputs**, an identical transparent layer without keyboard
+   that only closes when clicked.
+3. **Keyboard: `exclusive` for ~75 ms on open, then `on_demand`.** The initial
+   exclusive grab gives the popup focus; keeping it exclusive makes Hyprland
+   send *all* pointer input to the layer, so the closing clicks on the other
+   outputs never arrive.
+4. Do not close on focus loss: focus may change on the way to the card.
+5. A click on the bar item itself while the popup is open reaches the plugin
+   as a regular `click`: treat it as a toggle.
 
-O [shellder-clock](../shellder-clock) (`panel.py`) implementa isso com GTK4 +
-gtk4-layer-shell.
+`shellder_kit.panel.Panel` implements this with GTK4 + gtk4-layer-shell.
 
-### Ciclo de vida
+### Lifecycle
 
-- Todos os plugins sobem junto com o Shellder e são encerrados (SIGTERM no
-  grupo de processos) quando ele sai — inclusive se ele morrer.
-- Se um plugin sair, ele é reiniciado com espera crescente: 1s, 2s, 4s... até
-  30s. Depois de 30s rodando bem, a espera volta para 1s.
-- Um único processo atende todas as barras. Para conteúdo diferente em cada
-  monitor, mande atualizações com `"monitor"`.
+- All plugins start with Shellder and are stopped (SIGTERM to the process
+  group) when it exits — even if it dies.
+- A plugin that exits is restarted with growing delays: 1s, 2s, 4s... up to
+  30s. After 30s running fine, the delay goes back to 1s.
+- One process serves every bar. For different content per output, send
+  updates with `"monitor"`.
 
-### Exemplos
+### Examples
 
-- [`../shellder-clock`](../shellder-clock) — porte do clock do Omarchy, com
-  calendário (Python + GTK4).
-- [`../shellder-workspace`](../shellder-workspace) — workspaces por monitor
-  (Python, só biblioteca padrão; usa `monitor` e `segments`).
-- `examples/plugins/counter-python/` — interativo: clique e scroll mudam um
-  contador (JSON nos dois sentidos).
-- `examples/plugins/loadavg-bash/` — só `echo` a cada 5 segundos.
+- [`../shellder-clock`](../shellder-clock) — port of the Omarchy clock, with
+  its calendar (Python + GTK4).
+- [`../shellder-workspace`](../shellder-workspace) — workspaces per output
+  (Python, standard library only; uses `monitor` and `segments`).
+- [`../shellder-indicators`](../shellder-indicators) — Omarchy's status
+  indicators (uses `segments`, `hover` and the kit).
+- `examples/plugins/counter-python/` — interactive: clicks and scroll change a
+  counter (JSON both ways).
+- `examples/plugins/loadavg-bash/` — just `echo` every 5 seconds.
 
-Shell mínimo:
+Minimal shell plugin:
 
 ```bash
 #!/usr/bin/env bash
 while true; do date +%S; sleep 1; done
 ```
 
-## Arquitetura
+## Architecture
 
 ```
-main.odin      loop, layout, barras por monitor, render
-plugins.odin   manifest, processos, protocolo
-omarchy.odin   tema do Omarchy (paleta, shell.toml, fonte, Hyprland)
-config.odin    shell.json (leitura, layout, preferências, gravação)
-native.odin    bindings para o C
-native/        C: Wayland layer-shell (wlbar.c) e processos (proc.c)
+main.odin      loop, layout, one bar per output, rendering
+plugins.odin   manifest, processes, protocol, hot reload
+omarchy.odin   Omarchy theme (palette, shell.toml, font, Hyprland)
+config.odin    shell.json (read, layout, settings, save)
+native.odin    bindings for the C code
+native/        C: Wayland layer-shell (wlbar.c) and processes (proc.c)
+kit/           plugin kit (kit/python/shellder_kit)
 ```
 
-O `skald.run` usa SDL, que não cria layer-surfaces; por isso o Shellder usa o
-backend *embedded* do Skald: o C em `native/` cria uma surface por monitor e
-todas são desenhadas pelo mesmo renderer.
+`skald.run` uses SDL, which cannot create layer surfaces, so Shellder uses
+Skald's *embedded* backend: the C code in `native/` creates one surface per
+output and all of them are drawn by the same renderer.
 
-Ainda não há: tooltips na barra e entrada de teclado na barra.
+Not there yet: drawing tooltips, keyboard input on the bar.

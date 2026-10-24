@@ -38,7 +38,7 @@ int32_t sh_spawn(const char *const *argv, const char *cwd, const char *const *ex
 		return -1;
 	}
 
-	// envp montado antes do fork: no filho não dá para alocar.
+	// envp is built before fork: the child must not allocate.
 	int n_env = 0, n_extra = 0;
 	while (environ[n_env]) n_env++;
 	while (extra_env && extra_env[n_extra]) n_extra++;
@@ -46,7 +46,7 @@ int32_t sh_spawn(const char *const *argv, const char *cwd, const char *const *ex
 	int k = 0;
 	for (int i = 0; i < n_extra; i++) envp[k++] = (char *)extra_env[i];
 	for (int i = 0; i < n_env; i++) {
-		// As extras sobrescrevem as herdadas.
+		// Extra variables override inherited ones.
 		int dup = 0;
 		const char *eq = strchr(environ[i], '=');
 		size_t klen = eq ? (size_t)(eq - environ[i]) + 1 : strlen(environ[i]);
@@ -67,7 +67,7 @@ int32_t sh_spawn(const char *const *argv, const char *cwd, const char *const *ex
 	if (pid == 0) {
 		setpgid(0, 0);
 		prctl(PR_SET_PDEATHSIG, SIGTERM);
-		if (getppid() != parent) _exit(1); // o pai morreu antes do prctl
+		if (getppid() != parent) _exit(1); // parent died before prctl
 		signal(SIGPIPE, SIG_DFL);
 		dup2(in_pipe[0], 0);
 		dup2(out_pipe[1], 1);

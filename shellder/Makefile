@@ -6,14 +6,14 @@ CONFIG_DIR ?= $(or $(XDG_CONFIG_HOME),$(HOME)/.config)/shellder
 
 all: build
 
-# Clona o Skald em vendor/ (só se ainda não existir).
+# Clone Skald into vendor/ (only if missing).
 deps: $(SKALD_DIR)
 
 $(SKALD_DIR):
 	mkdir -p vendor
 	git clone $(SKALD_REPO) $(SKALD_DIR)
 
-# Atualiza o Skald para o último commit da branch atual.
+# Update Skald to the latest commit of its current branch.
 update: deps
 	git -C $(SKALD_DIR) pull --ff-only
 
@@ -23,7 +23,7 @@ build: deps
 run: deps
 	./build.sh run
 
-# Copia os plugins de exemplo para a pasta de plugins (não sobrescreve).
+# Copy the example plugins into the plugins folder (no overwrite).
 install-examples:
 	mkdir -p $(CONFIG_DIR)/plugins
 	cp -rn examples/plugins/* $(CONFIG_DIR)/plugins/

@@ -1,9 +1,9 @@
-"""Tema do Omarchy (evento "config" do Shellder) em valores e CSS para GTK.
+"""The Omarchy theme (Shellder's "config" event) as values and GTK CSS.
 
-As classes CSS espelham os componentes do shell do Omarchy
+The CSS classes mirror the Omarchy shell components
 (/usr/share/omarchy/shell/Ui): PanelHero, PanelSectionHeader,
-PanelSeparator, PanelActionButton, PanelSlider, ToggleSwitch e as linhas de
-lista dos painéis.
+PanelSeparator, PanelActionButton, PanelSlider, ToggleSwitch and the panels'
+list rows.
 """
 
 
@@ -20,7 +20,7 @@ def parse_hex(value, fallback=(0.8, 0.8, 0.8, 1.0)):
 
 
 def darker(c, factor):
-    """Qt.darker: divide o brilho pelo fator."""
+    """Qt.darker: divide the brightness by the factor."""
     return (c[0] / factor, c[1] / factor, c[2] / factor, c[3])
 
 
@@ -83,7 +83,7 @@ class Theme:
         return int(v) if v else default
 
     def stylesheet(self, extra=""):
-        """CSS base dos painéis; `extra` vem depois (mesmo dicionário de %)."""
+        """Base panel CSS; `extra` is appended (same % dictionary)."""
         s = self.size
         fg = self.fg
         vals = {
@@ -133,7 +133,7 @@ window.sk-layer { background: transparent; }
 .sk-display-large { font-size: %(display_large)dpx; }
 .sk-bold { font-weight: bold; }
 
-/* Linhas de lista (dispositivos, redes...). */
+/* List rows (devices, networks...). */
 .sk-row { border-radius: %(r)dpx; padding: 6px 8px; border: %(hbw)dpx solid transparent; }
 .sk-row:hover { background: %(hover)s; border-color: %(hover_border)s; }
 .sk-row.selected { background: %(selected)s; border-color: %(selected_border)s; }

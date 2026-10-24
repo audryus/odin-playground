@@ -1,22 +1,22 @@
-// wlbar — shim mínimo de Wayland para o Shellder.
+// wlbar — minimal Wayland shim for Shellder.
 //
-// Cuida do que o Skald não faz no modo embedded: conectar no compositor,
-// criar uma layer-surface (wlr-layer-shell) por wl_output, presa numa das
-// bordas da tela,
-// e traduzir eventos de ponteiro. O Odin consome tudo via wb_next_event.
+// Does what Skald's embedded mode leaves to the host: connect to the
+// compositor, create one layer surface (wlr-layer-shell) per wl_output
+// anchored to a screen edge, and translate pointer events. Odin consumes
+// everything through wb_next_event.
 #pragma once
 #include <stdint.h>
 
 #define WB_MAX_OUTPUTS 16
 
 enum {
-	WB_EV_CONFIGURE = 1, // out, a=w, b=h (logical px) — surface pronta/redimensionada
-	WB_EV_CLOSED,        // out — monitor removido ou surface fechada pelo compositor
+	WB_EV_CONFIGURE = 1, // out, a=w, b=h (logical px) — surface ready/resized
+	WB_EV_CLOSED,        // out — output removed or surface closed by the compositor
 	WB_EV_ENTER,         // out, x, y
 	WB_EV_LEAVE,         // out
 	WB_EV_MOTION,        // out, x, y
 	WB_EV_BUTTON,        // out, a=0 left / 1 middle / 2 right, b=pressed
-	WB_EV_AXIS,          // out, x=horizontal, y=vertical (positivo = para baixo)
+	WB_EV_AXIS,          // out, x=horizontal, y=vertical (positive = down)
 };
 
 typedef struct {
@@ -28,12 +28,12 @@ typedef struct {
 
 enum { WB_POS_BOTTOM = 0, WB_POS_TOP, WB_POS_LEFT, WB_POS_RIGHT };
 
-// size = espessura da barra (altura se horizontal, largura se vertical).
+// size = bar thickness (height when horizontal, width when vertical).
 int         wb_init(int32_t size, int32_t position, const char *namespace_);
-// Muda espessura e borda de todas as barras (o compositor manda um novo
-// configure para cada uma).
+// Changes thickness and edge of every bar (the compositor sends a new
+// configure for each).
 void        wb_set_geometry(int32_t size, int32_t position);
-// Cursor sobre a barra: 1 = mão (item clicável), 0 = seta.
+// Cursor over the bar: 1 = hand (clickable item), 0 = arrow.
 void        wb_set_cursor(int32_t pointer);
 void       *wb_display(void);
 void       *wb_surface(int32_t out);
@@ -42,8 +42,8 @@ const char *wb_output_name(int32_t out);
 void        wb_output_destroy(int32_t out);
 
 int         wb_fd(void);
-// Chame antes do poll(); retorna -1 se a conexão caiu.
+// Call before poll(); returns -1 if the connection dropped.
 int         wb_before_poll(void);
-// Chame depois do poll(); readable != 0 se o fd tinha dados.
+// Call after poll(); readable != 0 if the fd had data.
 int         wb_after_poll(int readable);
 int         wb_next_event(wb_event *ev);

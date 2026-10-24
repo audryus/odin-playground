@@ -9,19 +9,19 @@ import "core:strings"
 import "core:time"
 import "gui:skald"
 
-// Tema no padrão do Omarchy, resolvido como o shell dele faz
+// Omarchy theme, resolved the way its shell does
 // (/usr/share/omarchy/shell/Commons/{Color,Style}.qml):
 //
-//   paleta     ~/.local/state/omarchy/current/theme/colors.toml
-//   superfícies o shell.toml do tema + ~/.config/omarchy/shell.toml por cima
+//   palette    ~/.local/state/omarchy/current/theme/colors.toml
+//   surfaces   the theme's shell.toml + ~/.config/omarchy/shell.toml on top
 //              ([bar], [popups], [controls], [font])
-//   fonte      o alias "monospace" do fontconfig (o que `omarchy font set`
-//              troca), com a escala de tamanhos derivada de [font] base-size
-//   cantos     decoration:rounding do Hyprland
+//   font       fontconfig's "monospace" alias (what `omarchy font set`
+//              changes), with the size scale derived from [font] base-size
+//   corners    Hyprland's decoration:rounding
 //
-// Fora do Omarchy (arquivos ausentes) valem os mesmos padrões do Color.qml.
-// O resultado vai para a barra e, como JSON, para os plugins no evento
-// "config", para que todos desenhem com o mesmo tema.
+// Outside Omarchy (missing files) the Color.qml defaults apply. The result
+// drives the bar and is sent to plugins as JSON in the "config" event so
+// everything draws with the same theme.
 
 RGBA :: [4]u8
 
@@ -31,23 +31,23 @@ Font_Sizes :: struct {
 }
 
 Omarchy_Theme :: struct {
-	// paleta base
+	// base palette
 	foreground, background, accent, urgent, muted: RGBA,
 
 	bar_background, bar_text, bar_active: RGBA,
 	popup_background, popup_text, popup_border: RGBA,
 	popup_border_width: int,
 	hover_fill, hover_border, selected_fill: RGBA,
-	// Demais estados de controle (Style.qml: *FillFor/*BorderFor/*StateColor).
+	// Remaining control states (Style.qml: *FillFor/*BorderFor/*StateColor).
 	normal_fill, normal_border, hover_color, selected_color, selected_border, pressed_fill: RGBA,
 	normal_border_width, hover_border_width, selected_border_width: int,
 
 	radius:      int,
-	font_family: string, // família concreta (ex.: "JetBrainsMono Nerd Font")
+	font_family: string, // concrete family (e.g. "JetBrainsMono Nerd Font")
 	font_file:   string,
 	font:        Font_Sizes,
 	bar_size_horizontal, bar_size_vertical: int,
-	// Tokens da barra do Omarchy (Style.bar), já escalados pela fonte.
+	// Omarchy bar tokens (Style.bar), already scaled by font size.
 	bar_icon_slot, bar_icon_canvas, bar_icon_font, bar_status_slot: int,
 }
 
@@ -69,7 +69,7 @@ theme_watch_init :: proc(tw: ^Theme_Watch) {
 	}
 }
 
-// theme_changed diz se algum dos arquivos mudou desde a última leitura.
+// theme_changed reports whether any of the files changed since the last read.
 theme_changed :: proc(tw: ^Theme_Watch) -> bool {
 	changed := !tw.loaded
 	for p, i in tw.paths {
@@ -81,11 +81,11 @@ theme_changed :: proc(tw: ^Theme_Watch) -> bool {
 	return changed
 }
 
-// theme_load lê tudo e resolve. `transparent` é o bar.transparent do
-// shell.json: como no Omarchy, fundo transparente e texto com a cor que o
-// omarchy-bar-text-color escolhe para ficar legível sobre o papel de parede.
+// theme_load reads and resolves everything. `transparent` is shell.json's
+// bar.transparent: as in Omarchy, a transparent background and the text color
+// omarchy-bar-text-color picks to stay legible over the wallpaper.
 theme_load :: proc(tw: ^Theme_Watch, transparent: bool, position: Position, vertical: bool) -> (t: Omarchy_Theme) {
-	// --- paleta base (Color.qml: loadColors)
+	// --- base palette (Color.qml: loadColors)
 	t.foreground = {0xca, 0xcc, 0xcc, 0xff}
 	t.background = {0x10, 0x13, 0x15, 0xff}
 	t.accent     = {0xca, 0xcc, 0xcc, 0xff}
@@ -95,7 +95,7 @@ theme_load :: proc(tw: ^Theme_Watch, transparent: bool, position: Position, vert
 		load_palette(&t, string(data))
 	}
 
-	// --- shell.toml do tema + do usuário
+	// --- theme + user shell.toml
 	sv := make(map[string]string, 128, context.temp_allocator)
 	for i in 1..=2 {
 		if data, err := os.read_entire_file(tw.paths[i], context.temp_allocator); err == nil {
@@ -130,7 +130,7 @@ theme_load :: proc(tw: ^Theme_Watch, transparent: bool, position: Position, vert
 	t.hover_border_width    = int(num(&r, "controls.hover-cursor-border-width", f64(t.normal_border_width)))
 	t.selected_border_width = int(num(&r, "controls.selected-border-width", 0))
 
-	// --- tipografia (Style.qml: font)
+	// --- typography (Style.qml: font)
 	base := max(1.0, num(&r, "font.base-size", 12))
 	px :: proc(base, mult: f64) -> int { return max(1, int(math.round(base * mult))) }
 	tok :: proc(r: ^Resolver, key: string, def: int) -> int {
@@ -149,7 +149,7 @@ theme_load :: proc(tw: ^Theme_Watch, transparent: bool, position: Position, vert
 	t.font.icon          = tok(&r, "icon",          t.font.title)
 	t.font.icon_large    = tok(&r, "icon-large",    px(base, 1.5))
 
-	// --- tamanho da barra (Style.qml: barToken)
+	// --- bar size (Style.qml: barToken)
 	scale := max(1.0 / 12, base / 12)
 	bar_tok :: proc(r: ^Resolver, key: string, def, scale: f64) -> int {
 		n := num(r, key, def)
@@ -164,7 +164,7 @@ theme_load :: proc(tw: ^Theme_Watch, transparent: bool, position: Position, vert
 	t.bar_icon_font       = bar_tok(&r, "bar.icon-font",       13, scale)
 	t.bar_status_slot     = bar_tok(&r, "bar.status-slot",     21, scale)
 
-	// --- Hyprland: cantos e espessura de borda padrão dos popups
+	// --- Hyprland: corners and default popup border width
 	t.radius = hypr_int_option("decoration:rounding", 0)
 	t.popup_border_width = int(num(&r, "popups.border-width", f64(hypr_int_option("general:border_size", 1))))
 
@@ -174,12 +174,12 @@ theme_load :: proc(tw: ^Theme_Watch, transparent: bool, position: Position, vert
 		t.bar_text = transparent_text_color(position, size, t.bar_text, t.background)
 	}
 
-	// --- fonte: alias monospace
+	// --- font: the monospace alias
 	t.font_family, t.font_file = resolve_font("monospace")
 	return
 }
 
-// theme_to_skald monta o tema do Skald para a barra.
+// theme_to_skald builds the Skald theme for the bar.
 theme_to_skald :: proc(t: ^Omarchy_Theme) -> skald.Theme {
 	th := skald.theme_dark()
 	th.color.bg         = to_color(t.bar_background)
@@ -204,7 +204,7 @@ theme_to_skald :: proc(t: ^Omarchy_Theme) -> skald.Theme {
 	return th
 }
 
-// theme_json serializa o tema para o evento "config" dos plugins.
+// theme_json serializes the theme for the plugins' "config" event.
 theme_json :: proc(t: ^Omarchy_Theme, allocator := context.allocator) -> string {
 	b := strings.builder_make(allocator)
 	h :: proc(c: RGBA) -> string { return fmt.tprintf("#%02x%02x%02x%02x", c[0], c[1], c[2], c[3]) }
@@ -236,8 +236,8 @@ to_color :: proc(c: RGBA) -> skald.Color {
 	return skald.rgba(u32(c[0]) << 24 | u32(c[1]) << 16 | u32(c[2]) << 8 | u32(c[3]))
 }
 
-// font_px resolve um tamanho pedido por um plugin: token da escala do Omarchy
-// ("caption", "bodySmall", "body", "title", "icon", "iconFont"...) ou px.
+// font_px resolves a size requested by a plugin: an Omarchy type-scale token
+// ("caption", "bodySmall", "body", "title", "icon", "iconFont"...) or px.
 font_px :: proc(t: ^Omarchy_Theme, spec: string, def: int) -> int {
 	f := t.font
 	switch spec {
@@ -259,8 +259,8 @@ font_px :: proc(t: ^Omarchy_Theme, spec: string, def: int) -> int {
 	return def
 }
 
-// color_by_name resolve as cores que um plugin pode pedir: "#rrggbb[aa]" ou um
-// papel do tema.
+// color_by_name resolves the colors a plugin may ask for: "#rrggbb[aa]" or a
+// theme role.
 color_by_name :: proc(t: ^Omarchy_Theme, name: string) -> (skald.Color, bool) {
 	switch name {
 	case "", "foreground", "fg", "text": return to_color(t.bar_text), true
@@ -309,8 +309,8 @@ load_palette :: proc(t: ^Omarchy_Theme, text: string) {
 	}
 }
 
-// parse_shell: mesmo leitor tolerante do Color.qml (strings, números, listas
-// de larguras e palavras soltas; só dentro de seções).
+// parse_shell: the same lenient reader as Color.qml (strings, numbers, width
+// lists and bare words; only inside sections).
 @(private = "file")
 parse_shell :: proc(text: string, out: ^map[string]string) {
 	section := ""
@@ -351,7 +351,7 @@ pick :: proc(r: ^Resolver, key: string) -> string { return r.sv[key] }
 num :: proc(r: ^Resolver, key: string, def: f64) -> f64 {
 	v, ok := r.sv[key]
 	if !ok { return def }
-	// Listas de largura ("2 4"): vale o primeiro número.
+	// Width lists ("2 4"): the first number wins.
 	if sp := strings.index_byte(v, ' '); sp >= 0 { v = v[:sp] }
 	n, nok := strconv.parse_f64(v)
 	return nok ? n : def
@@ -366,14 +366,14 @@ boolean :: proc(r: ^Resolver, key: string, def: bool) -> bool {
 	return def
 }
 
-// flat_color resolve um valor de cor do shell.toml: papel (foreground,
-// accent...), referência a outra chave ("hyprland.active-border"), cor
-// (#rgb, #rrggbb[aa], rgb(...), rgba(...)) ou gradiente (vale a 1ª cor).
+// flat_color resolves a shell.toml color value: a role (foreground,
+// accent...), a reference to another key ("hyprland.active-border"), a color
+// (#rgb, #rrggbb[aa], rgb(...), rgba(...)) or a gradient (first stop wins).
 @(private = "file")
 flat_color :: proc(r: ^Resolver, value: string, fallback: RGBA, depth := 0) -> RGBA {
 	v := strings.trim_space(value)
 	if v == "" || depth > 8 { return fallback }
-	// Primeiro token que não é ângulo de gradiente.
+	// First token that is not a gradient angle.
 	for part in strings.fields(v, context.temp_allocator) {
 		if strings.has_suffix(part, "deg") { continue }
 		v = part
@@ -447,9 +447,9 @@ parse_color :: proc(s: string) -> (c: RGBA, ok: bool) {
 	return c, true
 }
 
-// transparent_text_color: a mesma escolha do Bar.qml do Omarchy
-// (omarchy-bar-text-color <posição> <tamanho> <texto> <contraste>). Sem o
-// script, fica a cor do tema.
+// transparent_text_color: the same choice as Omarchy's Bar.qml
+// (omarchy-bar-text-color <position> <size> <text> <contrast>). Without the
+// script the theme color stays.
 @(private = "file")
 transparent_text_color :: proc(position: Position, size: int, text, contrast: RGBA) -> RGBA {
 	hex :: proc(c: RGBA) -> string { return fmt.tprintf("#%02x%02x%02x", c[0], c[1], c[2]) }
@@ -473,7 +473,7 @@ hypr_int_option :: proc(name: string, def: int) -> int {
 	return o.int
 }
 
-// resolve_font devolve (família concreta, arquivo) via fc-match.
+// resolve_font returns (concrete family, file) via fc-match.
 @(private = "file")
 resolve_font :: proc(family: string) -> (name, file: string) {
 	if strings.contains_any(family, "'\\") { family_bad(family); return }
@@ -489,13 +489,13 @@ resolve_font :: proc(family: string) -> (name, file: string) {
 
 @(private = "file")
 family_bad :: proc(family: string) {
-	fmt.eprintfln("shellder: nome de fonte inválido %q", family)
+	fmt.eprintfln("shellder: invalid font name %q", family)
 }
 
-// font_em_factor lê unitsPerEm (head) e ascender/descender (hhea) de uma
-// TTF/OTF e devolve (ascender − descender) / unitsPerEm. O Skald interpreta
-// `size` como a altura ascender−descender; o Qt (e o Omarchy) como o em. Para
-// a barra ter o mesmo tamanho de letra do Omarchy: size_skald = em × fator.
+// font_em_factor reads unitsPerEm (head) and ascender/descender (hhea) from a
+// TTF/OTF and returns (ascender − descender) / unitsPerEm. Skald treats `size`
+// as the ascender−descender height; Qt (and Omarchy) as the em. For the bar to
+// match Omarchy's text size: skald_size = em × factor.
 font_em_factor :: proc(data: []u8) -> f32 {
 	be16 :: proc(d: []u8, at: int) -> int {
 		if at + 2 > len(d) { return 0 }

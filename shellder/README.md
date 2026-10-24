@@ -237,6 +237,33 @@ esses valores para ficar com o visual do Omarchy.
 Ler o stdin é opcional: se o plugin não lê e o pipe enche, as linhas são
 descartadas (a barra nunca trava por causa de um plugin).
 
+### Kit para plugins em Python
+
+O Shellder exporta `SHELLDER_KIT` (a pasta `kit/` ao lado do binário). Em
+Python:
+
+```python
+import os, sys
+sys.path.insert(0, os.path.join(os.environ["SHELLDER_KIT"], "python"))
+from shellder_kit import Plugin
+from shellder_kit import panel as P   # só se o plugin tiver popup (GTK4)
+
+class Meu(Plugin):
+    def on_config(self, ev): self.emit(icon="󰕾", tooltip="Volume")
+    def on_click(self, ev):  self.panel.toggle(ev)
+
+Meu().run()
+```
+
+- `Plugin`: laço do protocolo; `self.theme`, `self.bar`, `self.settings`;
+  `emit()` (não repete linhas iguais; `monitor=` para uma barra só),
+  `save_settings()`, `every()`, `later()`, `run_cmd()` (assíncrono),
+  `run_detached()`, `watch_lines()` (processo longo, linha a linha).
+- `panel.Panel`: o popup no padrão abaixo, já pronto — sobrescreva `build()`
+  e `refresh()`.
+- Widgets com o visual dos componentes do Omarchy: `hero`, `section`,
+  `separator`, `row`, `action_button`, `button`, `switch`, `slider`.
+
 ### Popups e painéis
 
 O Shellder não desenha nada além da barra. Um plugin que precisa de uma

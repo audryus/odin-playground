@@ -38,6 +38,9 @@ Omarchy_Theme :: struct {
 	popup_background, popup_text, popup_border: RGBA,
 	popup_border_width: int,
 	hover_fill, hover_border, selected_fill: RGBA,
+	// Demais estados de controle (Style.qml: *FillFor/*BorderFor/*StateColor).
+	normal_fill, normal_border, hover_color, selected_color, selected_border, pressed_fill: RGBA,
+	normal_border_width, hover_border_width, selected_border_width: int,
 
 	radius:      int,
 	font_family: string, // família concreta (ex.: "JetBrainsMono Nerd Font")
@@ -114,6 +117,18 @@ theme_load :: proc(tw: ^Theme_Watch, transparent: bool, position: Position, vert
 		num(&r, "controls.hover-cursor-border-alpha", 0.25))
 	sel := flat_color(&r, pick(&r, "controls.selected-color"), t.foreground)
 	t.selected_fill = with_alpha(sel, num(&r, "controls.selected-fill-alpha", 0.18))
+	t.hover_color   = hover
+	t.selected_color = sel
+	t.selected_border = with_alpha(flat_color(&r, pick(&r, "controls.selected-border"), sel),
+		num(&r, "controls.selected-border-alpha", 1))
+	normal := flat_color(&r, pick(&r, "controls.normal-color"), t.foreground)
+	t.normal_fill   = with_alpha(normal, num(&r, "controls.normal-fill-alpha", 0.04))
+	t.normal_border = with_alpha(flat_color(&r, pick(&r, "controls.normal-border"), normal),
+		num(&r, "controls.normal-border-alpha", 0.4))
+	t.pressed_fill  = with_alpha(hover, num(&r, "controls.pressed-fill-alpha", 0.22))
+	t.normal_border_width   = int(num(&r, "controls.normal-border-width", 1))
+	t.hover_border_width    = int(num(&r, "controls.hover-cursor-border-width", f64(t.normal_border_width)))
+	t.selected_border_width = int(num(&r, "controls.selected-border-width", 0))
 
 	// --- tipografia (Style.qml: font)
 	base := max(1.0, num(&r, "font.base-size", 12))
@@ -209,8 +224,11 @@ theme_json :: proc(t: ^Omarchy_Theme, allocator := context.allocator) -> string 
 		t.bar_icon_slot, t.bar_icon_canvas, t.bar_icon_font, t.bar_status_slot)
 	fmt.sbprintf(&b, `"popup":{{"background":"%s","text":"%s","border":"%s","borderWidth":%d}},`,
 		h(t.popup_background), h(t.popup_text), h(t.popup_border), t.popup_border_width)
-	fmt.sbprintf(&b, `"controls":{{"hover":"%s","hoverBorder":"%s","selected":"%s"}}}}`,
-		h(t.hover_fill), h(t.hover_border), h(t.selected_fill))
+	fmt.sbprintf(&b, `"controls":{{"normal":"%s","normalBorder":"%s","normalBorderWidth":%d,"hover":"%s","hoverBorder":"%s","hoverBorderWidth":%d,"hoverColor":"%s","selected":"%s","selectedBorder":"%s","selectedBorderWidth":%d,"selectedColor":"%s","pressed":"%s"}}}}`,
+		h(t.normal_fill), h(t.normal_border), t.normal_border_width,
+		h(t.hover_fill), h(t.hover_border), t.hover_border_width, h(t.hover_color),
+		h(t.selected_fill), h(t.selected_border), t.selected_border_width, h(t.selected_color),
+		h(t.pressed_fill))
 	return strings.to_string(b)
 }
 

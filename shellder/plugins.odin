@@ -210,6 +210,21 @@ plugins_sync :: proc(set: ^Plugin_Set, cfg: ^Config) -> (out: Plugin_Sync) {
 	return
 }
 
+// kit_dir: <pasta do Shellder>/kit, a partir do executável (build/shellder).
+kit_dir :: proc() -> string {
+	@(static) cached: string
+	if cached != "" { return cached }
+	buf: [4096]u8
+	n := posix.readlink("/proc/self/exe", &buf[0], len(buf))
+	exe := n > 0 ? string(buf[:n]) : ""
+	dir := exe
+	for _ in 0..<2 { // build/shellder -> build -> raiz
+		if i := strings.last_index_byte(dir, '/'); i >= 0 { dir = dir[:i] }
+	}
+	cached = strings.concatenate({dir, "/kit"})
+	return cached
+}
+
 plugin_running :: proc(p: ^Plugin) -> bool {
 	return p.pid > 0 || p.restart_at != {}
 }
@@ -406,6 +421,8 @@ plugin_start :: proc(p: ^Plugin, cfg: ^Config, config_line: string) {
 		fmt.ctprintf("SHELLDER_PLUGIN_ID=%s", p.id),
 		fmt.ctprintf("SHELLDER_PLUGIN_DIR=%s", p.dir),
 		fmt.ctprintf("SHELLDER_CONFIG_DIR=%s", cfg.dir),
+		// Kit de apoio a plugins (kit/python/shellder_kit, ...), ao lado do binário.
+		fmt.ctprintf("SHELLDER_KIT=%s", kit_dir()),
 		nil,
 	}
 	cwd := strings.clone_to_cstring(p.dir, context.temp_allocator)

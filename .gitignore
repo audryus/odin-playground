@@ -3,6 +3,7 @@
 /raylib-odin/
 /skald-example/vendor/
 /hello-raylib/vendor/
+/skald-bar/vendor/
 
 # --- Build output ---
 build/

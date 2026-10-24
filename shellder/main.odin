@@ -155,7 +155,7 @@ apply_settings_updates :: proc(app: ^App) {
 
 view :: proc(app: ^App, bar: ^Bar, ctx: ^skald.Ctx(Msg)) -> skald.View {
 	th  := ctx.theme
-	gap := th.spacing.md
+	gap: f32 = 0
 
 	section :: proc(app: ^App, bar: ^Bar, ctx: ^skald.Ctx(Msg), s: Section) -> []skald.View {
 		out := make([dynamic]skald.View, context.temp_allocator)
@@ -169,66 +169,78 @@ view :: proc(app: ^App, bar: ^Bar, ctx: ^skald.Ctx(Msg)) -> skald.View {
 	right  := section(app, bar, ctx, .Right)
 
 	// Três blocos: início e fim com flex(1) para o centro ficar realmente no
-	// centro, qualquer que seja o tamanho dos lados.
+	// centro. Como no Bar.qml do Omarchy: itens colados (cada um já tem a
+	// própria margem) e 8 px nas pontas.
+	EDGE :: 8
 	if vertical(app) {
 		return skald.col(
+			skald.spacer(EDGE),
 			skald.flex(1, skald.col(..left, spacing = gap, cross_align = .Center)),
 			skald.col(..center, spacing = gap, cross_align = .Center),
 			skald.flex(1, skald.col(..right, spacing = gap, main_align = .End, cross_align = .Center)),
+			skald.spacer(EDGE),
 			width       = f32(app.size),
-			padding     = th.spacing.xs,
 			cross_align = .Center,
 			bg          = th.color.bg,
 		)
 	}
 	return skald.row(
+		skald.spacer(EDGE),
 		skald.flex(1, skald.row(..left, spacing = gap, cross_align = .Center)),
 		skald.row(..center, spacing = gap, cross_align = .Center),
 		skald.flex(1, skald.row(..right, spacing = gap, main_align = .End, cross_align = .Center)),
+		skald.spacer(EDGE),
 		height      = f32(app.size),
-		padding     = th.spacing.xs,
 		cross_align = .Center,
 		bg          = th.color.bg,
 	)
 }
 
+// view_plugin desenha um item como os botões da barra do Omarchy
+// (Ui/WidgetButton.qml, BarIconButton.qml): sem fundo no hover — só o cursor
+// de mão —, texto com margem de 8.5 px, ícone sozinho num slot de iconSlot px
+// com a fonte iconFont, segmentos lado a lado.
 view_plugin :: proc(app: ^App, p: ^Plugin, bar: ^Bar, ctx: ^skald.Ctx(Msg)) -> (skald.View, bool) {
 	pv := plugin_view_for(p, bar.name)
 	if !pv.visible || (pv.text == "" && pv.icon == "" && len(pv.segments) == 0) { return {}, false }
 	th := ctx.theme
 	om := &app.omarchy
 	vert := vertical(app)
+	bar_size := f32(app.size)
+	MARGIN :: 8.5 // WidgetButton.horizontalMargin
 
 	color, cok := color_by_name(om, pv.color)
 	if !cok { color = th.color.fg }
-	text_size := em_size(app, om.font.body)
-	icon_size := em_size(app, om.font.icon)
 
 	parts := make([dynamic]skald.View, context.temp_allocator)
+	any_hover := false
 
 	// Ícone + texto: uma zona clicável.
 	if pv.icon != "" || pv.text != "" {
 		id := skald.hash_id(p.id)
 		hovered := skald.widget_hovered(ctx, id)
+		any_hover ||= hovered
+		icon_size := em_size(app, om.bar_icon_font)
+		text_size := em_size(app, font_px(om, pv.font, om.font.body))
 		inner := make([dynamic]skald.View, context.temp_allocator)
 		if pv.icon != "" { append(&inner, skald.text(pv.icon, color, icon_size, font = app.font)) }
-		bg := hovered ? th.color.surface : skald.Color{}
 		child: skald.View
 		if vert {
 			// Na vertical cada linha do texto vira uma linha centrada, cortada
 			// na largura da barra (o clock usa "HH\n—\nmm").
-			max_w := f32(app.size) - 4 * th.spacing.xs
 			it := pv.text
 			for line in strings.split_lines_iterator(&it) {
 				append(&inner, skald.text(line, color, text_size, font = app.font,
-					max_width = max_w, overflow = .Ellipsis, align = .Center))
+					max_width = bar_size - 4, overflow = .Ellipsis, align = .Center))
 			}
-			child = skald.col(..inner[:], spacing = 0, padding = th.spacing.xs,
-				cross_align = .Center, bg = bg, radius = th.radius.sm)
+			child = skald.col(..inner[:], width = bar_size, padding = 4, cross_align = .Center)
+		} else if pv.text == "" {
+			child = skald.row(..inner[:], width = f32(om.bar_icon_slot), height = bar_size,
+				main_align = .Center, cross_align = .Center)
 		} else {
-			if pv.text != "" { append(&inner, skald.text(pv.text, color, text_size, font = app.font)) }
-			child = skald.row(..inner[:], spacing = th.spacing.sm, padding = th.spacing.xs,
-				cross_align = .Center, bg = bg, radius = th.radius.sm)
+			append(&inner, skald.text(pv.text, color, text_size, font = app.font))
+			child = skald.row(skald.spacer(MARGIN), skald.row(..inner[:], spacing = th.spacing.sm, cross_align = .Center),
+				skald.spacer(MARGIN), height = bar_size, cross_align = .Center)
 		}
 		append(&parts, clickable_zone(ctx, p, bar, id, child, hovered, ""))
 	}
@@ -237,25 +249,44 @@ view_plugin :: proc(app: ^App, p: ^Plugin, bar: ^Bar, ctx: ^skald.Ctx(Msg)) -> (
 	for sg in pv.segments {
 		id := skald.hash_id(fmt.tprintf("%s\x00%s", p.id, sg.id))
 		hovered := skald.widget_hovered(ctx, id)
+		any_hover ||= hovered
 		c := color
 		if sg.color != "" {
 			if sc, ok := color_by_name(om, sg.color); ok { c = sc }
 		}
 		c.a *= sg.opacity
 		label := sg.text
-		size := text_size
+		def_size := om.font.body
 		if sg.icon != "" {
 			label = sg.text == "" ? sg.icon : fmt.tprintf("%s %s", sg.icon, sg.text)
-			if sg.text == "" { size = icon_size }
+			if sg.text == "" { def_size = om.bar_icon_font }
 		}
-		bg := hovered ? th.color.surface : skald.Color{}
-		w := sg.width
-		if vert { w = f32(app.size) - 2 * th.spacing.xs }
+		size := em_size(app, font_px(om, sg.font, def_size))
+		w, h := sg.width, bar_size
+		if vert { w, h = bar_size, sg.width > 0 ? sg.width : 0 }
+		pad: f32 = (vert ? h : w) > 0 ? 0 : MARGIN
 		child := skald.row(skald.text(label, c, size, font = app.font),
-			width = w, height = f32(app.size) - 2 * th.spacing.xs,
-			padding = w > 0 ? 0 : th.spacing.xs,
-			main_align = .Center, cross_align = .Center, bg = bg, radius = th.radius.sm)
+			width = w, height = h, padding = vert ? 0 : pad,
+			main_align = .Center, cross_align = .Center)
+		if vert && h == 0 {
+			child = skald.col(skald.text(label, c, size, font = app.font),
+				width = w, padding = 5, main_align = .Center, cross_align = .Center)
+		}
 		append(&parts, clickable_zone(ctx, p, bar, id, child, hovered, sg.id))
+	}
+
+	// "hover" para o plugin quando o ponteiro entra/sai do item nesta barra
+	// (o indicators do Omarchy revela os indicadores inativos assim).
+	if p.hovered_on[bar.name] != any_hover {
+		if _, had := p.hovered_on[bar.name]; !had {
+			p.hovered_on[strings.clone(bar.name)] = any_hover
+		} else {
+			p.hovered_on[bar.name] = any_hover
+		}
+		skald.send(ctx, Plugin_Input{plugin = p, ev = Plugin_Event{
+			kind = .Hover, dir = any_hover ? 1 : 0, monitor = bar.name,
+			bar_size = bar.win.size_logical,
+		}})
 	}
 
 	if vert { return skald.col(..parts[:], spacing = 0, cross_align = .Center), true }
@@ -478,6 +509,10 @@ render_bar :: proc(app: ^App, b: ^Bar) {
 		skald.render_view(&app.r, v, {0, 0}, {f32(w.size_logical.x), f32(w.size_logical.y)})
 		skald.render_overlays(&app.r)
 		skald.frame_end(&app.r)
+	}
+	// Cursor de mão sobre itens clicáveis, como o PointingHandCursor do Omarchy.
+	if mp := w.input.mouse_pos; mp.x >= 0 && mp.y >= 0 {
+		wb_set_cursor(b.over_item ? 1 : 0)
 	}
 	check_double_click(app, b)
 	skald.input_begin(w) // zera as bordas de input para o próximo frame

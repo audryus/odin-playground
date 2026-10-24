@@ -174,19 +174,41 @@ static const struct wl_output_listener output_listener = {
 
 // ---- wl_pointer ------------------------------------------------------------
 
-static void set_cursor(uint32_t serial) {
-	if (!S.cursor_theme || !S.cursor_surface) return;
-	struct wl_cursor *c = wl_cursor_theme_get_cursor(S.cursor_theme, "default");
+// Cursor atual (nome do tema de cursores) e o serial do último enter, que o
+// wl_pointer_set_cursor exige.
+static const char *cursor_name = "default";
+static uint32_t    enter_serial;
+
+static void apply_cursor(void) {
+	if (!S.cursor_theme || !S.cursor_surface || !S.pointer) return;
+	struct wl_cursor *c = wl_cursor_theme_get_cursor(S.cursor_theme, cursor_name);
+	// Temas antigos usam os nomes X11.
+	if (!c && strcmp(cursor_name, "pointer") == 0) c = wl_cursor_theme_get_cursor(S.cursor_theme, "hand2");
+	if (!c) c = wl_cursor_theme_get_cursor(S.cursor_theme, "default");
 	if (!c) c = wl_cursor_theme_get_cursor(S.cursor_theme, "left_ptr");
 	if (!c || c->image_count == 0) return;
 	struct wl_cursor_image *img = c->images[0];
 	struct wl_buffer *buf = wl_cursor_image_get_buffer(img);
 	if (!buf) return;
-	wl_pointer_set_cursor(S.pointer, serial, S.cursor_surface,
+	wl_pointer_set_cursor(S.pointer, enter_serial, S.cursor_surface,
 	                      (int32_t)img->hotspot_x, (int32_t)img->hotspot_y);
 	wl_surface_attach(S.cursor_surface, buf, 0, 0);
 	wl_surface_damage(S.cursor_surface, 0, 0, (int32_t)img->width, (int32_t)img->height);
 	wl_surface_commit(S.cursor_surface);
+}
+
+static void set_cursor(uint32_t serial) {
+	enter_serial = serial;
+	cursor_name = "default";
+	apply_cursor();
+}
+
+void wb_set_cursor(int32_t pointer) {
+	const char *want = pointer ? "pointer" : "default";
+	if (strcmp(want, cursor_name) == 0 || S.pointer_out < 0) return;
+	cursor_name = want;
+	apply_cursor();
+	wl_display_flush(S.display);
 }
 
 static void ptr_enter(void *d, struct wl_pointer *p, uint32_t serial, struct wl_surface *s,

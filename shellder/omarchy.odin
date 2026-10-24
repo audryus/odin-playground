@@ -44,6 +44,8 @@ Omarchy_Theme :: struct {
 	font_file:   string,
 	font:        Font_Sizes,
 	bar_size_horizontal, bar_size_vertical: int,
+	// Tokens da barra do Omarchy (Style.bar), já escalados pela fonte.
+	bar_icon_slot, bar_icon_canvas, bar_icon_font, bar_status_slot: int,
 }
 
 Theme_Watch :: struct {
@@ -142,6 +144,10 @@ theme_load :: proc(tw: ^Theme_Watch, transparent: bool, position: Position, vert
 	}
 	t.bar_size_horizontal = bar_tok(&r, "bar.size-horizontal", 26, scale)
 	t.bar_size_vertical   = bar_tok(&r, "bar.size-vertical",   28, scale)
+	t.bar_icon_slot       = bar_tok(&r, "bar.icon-slot",       27, scale)
+	t.bar_icon_canvas     = bar_tok(&r, "bar.icon-canvas",     16, scale)
+	t.bar_icon_font       = bar_tok(&r, "bar.icon-font",       13, scale)
+	t.bar_status_slot     = bar_tok(&r, "bar.status-slot",     21, scale)
 
 	// --- Hyprland: cantos e espessura de borda padrão dos popups
 	t.radius = hypr_int_option("decoration:rounding", 0)
@@ -198,8 +204,9 @@ theme_json :: proc(t: ^Omarchy_Theme, allocator := context.allocator) -> string 
 	fmt.sbprintf(&b, `"radius":%d,`, t.radius)
 	fmt.sbprintf(&b, `"colors":{{"foreground":"%s","background":"%s","accent":"%s","urgent":"%s","muted":"%s"}},`,
 		h(t.foreground), h(t.background), h(t.accent), h(t.urgent), h(t.muted))
-	fmt.sbprintf(&b, `"bar":{{"background":"%s","text":"%s","active":"%s"}},`,
-		h(t.bar_background), h(t.bar_text), h(t.bar_active))
+	fmt.sbprintf(&b, `"bar":{{"background":"%s","text":"%s","active":"%s","sizeHorizontal":%d,"sizeVertical":%d,"iconSlot":%d,"iconCanvas":%d,"iconFont":%d,"statusSlot":%d}},`,
+		h(t.bar_background), h(t.bar_text), h(t.bar_active), t.bar_size_horizontal, t.bar_size_vertical,
+		t.bar_icon_slot, t.bar_icon_canvas, t.bar_icon_font, t.bar_status_slot)
 	fmt.sbprintf(&b, `"popup":{{"background":"%s","text":"%s","border":"%s","borderWidth":%d}},`,
 		h(t.popup_background), h(t.popup_text), h(t.popup_border), t.popup_border_width)
 	fmt.sbprintf(&b, `"controls":{{"hover":"%s","hoverBorder":"%s","selected":"%s"}}}}`,
@@ -209,6 +216,29 @@ theme_json :: proc(t: ^Omarchy_Theme, allocator := context.allocator) -> string 
 
 to_color :: proc(c: RGBA) -> skald.Color {
 	return skald.rgba(u32(c[0]) << 24 | u32(c[1]) << 16 | u32(c[2]) << 8 | u32(c[3]))
+}
+
+// font_px resolve um tamanho pedido por um plugin: token da escala do Omarchy
+// ("caption", "bodySmall", "body", "title", "icon", "iconFont"...) ou px.
+font_px :: proc(t: ^Omarchy_Theme, spec: string, def: int) -> int {
+	f := t.font
+	switch spec {
+	case "":             return def
+	case "caption":      return f.caption
+	case "bodySmall":    return f.body_small
+	case "body":         return f.body
+	case "subtitle":     return f.subtitle
+	case "title":        return f.title
+	case "heading":      return f.heading
+	case "display":      return f.display
+	case "displayLarge": return f.display_large
+	case "iconSmall":    return f.icon_small
+	case "icon":         return f.icon
+	case "iconLarge":    return f.icon_large
+	case "iconFont":     return t.bar_icon_font
+	}
+	if n, ok := strconv.parse_int(spec); ok && n > 0 { return n }
+	return def
 }
 
 // color_by_name resolve as cores que um plugin pode pedir: "#rrggbb[aa]" ou um

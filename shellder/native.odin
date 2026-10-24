@@ -38,6 +38,7 @@ WB_Event :: struct {
 foreign native {
 	wb_init           :: proc(size: i32, position: i32, namespace_: cstring) -> c.int ---
 	wb_set_geometry   :: proc(size: i32, position: i32) ---
+	wb_set_cursor     :: proc(pointer: i32) ---
 	wb_display        :: proc() -> rawptr ---
 	wb_surface        :: proc(out: i32) -> rawptr ---
 	wb_output_scale   :: proc(out: i32) -> i32 ---

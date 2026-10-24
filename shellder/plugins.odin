@@ -37,24 +37,31 @@ MAX_LINE       :: 64 * 1024
 // Segment é um botão dentro do item (ex.: um workspace). O clique informa o id.
 Segment :: struct {
 	id, text, icon, color: string,
+	tooltip: string,
+	font:    string, // token de tamanho do tema ("caption", "body", "iconFont"...) ou px
 	opacity: f32, // 0..1 (padrão 1)
 	width:   f32, // px lógicos; 0 = o do conteúdo
 }
 
 Plugin_View :: struct {
 	text, icon, color: string,
+	tooltip: string,
+	font:    string, // tamanho do texto: token do tema ou px (padrão "body")
 	visible:  bool,
 	segments: [dynamic]Segment,
 }
 
 view_free :: proc(v: ^Plugin_View) {
-	delete(v.text); delete(v.icon); delete(v.color)
+	delete(v.text); delete(v.icon); delete(v.color); delete(v.tooltip); delete(v.font)
 	segments_clear(&v.segments)
 	delete(v.segments)
 }
 
 segments_clear :: proc(segs: ^[dynamic]Segment) {
-	for sg in segs { delete(sg.id); delete(sg.text); delete(sg.icon); delete(sg.color) }
+	for sg in segs {
+		delete(sg.id); delete(sg.text); delete(sg.icon); delete(sg.color)
+		delete(sg.tooltip); delete(sg.font)
+	}
 	clear(segs)
 }
 
@@ -93,6 +100,9 @@ Plugin :: struct {
 	pending_mtime: time.Time, // mudança vista, esperando assentar
 	change_seen:   time.Time,
 	line_buf:   [dynamic]u8,
+
+	// Em que barras o ponteiro está sobre o item (para o evento "hover").
+	hovered_on: map[string]bool,
 
 	// {"settings": {...}} recebidos e ainda não gravados no shell.json
 	// (heap; o main aplica e libera).
@@ -492,6 +502,17 @@ plugin_read :: proc(p: ^Plugin) -> (changed: bool) {
 	return
 }
 
+// json_font aceita "font": "caption" (token) ou "font": 13 (px).
+@(private = "file")
+json_font :: proc(v: json.Value) -> (string, bool) {
+	#partial switch f in v {
+	case json.String:  return f, true
+	case json.Integer: return fmt.tprintf("%d", f), true
+	case json.Float:   return fmt.tprintf("%d", int(f)), true
+	}
+	return "", false
+}
+
 @(private = "file")
 plugin_apply_line :: proc(p: ^Plugin, line: string) -> bool {
 	set :: proc(dst: ^string, v: string) {
@@ -529,6 +550,8 @@ plugin_apply_line :: proc(p: ^Plugin, line: string) -> bool {
 	if s, ok := obj["text"].(json.String);  ok { set(&v.text, s) }
 	if s, ok := obj["icon"].(json.String);  ok { set(&v.icon, s) }
 	if s, ok := obj["color"].(json.String); ok { set(&v.color, s) }
+	if s, ok := obj["tooltip"].(json.String); ok { set(&v.tooltip, s) }
+	if s, ok := json_font(obj["font"]); ok { set(&v.font, s) }
 	if b, ok := obj["visible"].(json.Boolean); ok { v.visible = b }
 	if arr, ok := obj["segments"].(json.Array); ok {
 		segments_clear(&v.segments)
@@ -550,6 +573,8 @@ plugin_apply_line :: proc(p: ^Plugin, line: string) -> bool {
 				text    = str(o, "text"),
 				icon    = str(o, "icon"),
 				color   = str(o, "color"),
+				tooltip = str(o, "tooltip"),
+				font    = strings.clone(json_font(o["font"]) or_else ""),
 				opacity = clamp(num(o, "opacity", 1), 0, 1),
 				width   = max(num(o, "width", 0), 0),
 			})
@@ -574,7 +599,7 @@ plugin_tick :: proc(p: ^Plugin) -> bool {
 	return p.pid < 0 && p.restart_at != {} && time.since(p.restart_at) >= 0
 }
 
-Plugin_Event_Kind :: enum { Click, Scroll }
+Plugin_Event_Kind :: enum { Click, Scroll, Hover }
 
 // Plugin_Event carrega, além do clique, onde ele aconteceu: o retângulo do
 // item na barra e o tamanho da barra (px lógicos, relativos ao canto
@@ -602,6 +627,8 @@ plugin_send_event :: proc(p: ^Plugin, ev: Plugin_Event, position: Position) {
 		head = fmt.tprintf(`"event":"click","button":"%s"`, btn)
 	case .Scroll:
 		head = fmt.tprintf(`"event":"scroll","direction":"%s"`, ev.dir < 0 ? "up" : "down")
+	case .Hover:
+		head = fmt.tprintf(`"event":"hover","hovered":%s`, ev.dir != 0 ? "true" : "false")
 	}
 	monitor, _ := json.marshal(ev.monitor, allocator = context.temp_allocator)
 	if ev.segment != "" {

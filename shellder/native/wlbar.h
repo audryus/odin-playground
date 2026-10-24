@@ -33,6 +33,8 @@ int         wb_init(int32_t size, int32_t position, const char *namespace_);
 // Muda espessura e borda de todas as barras (o compositor manda um novo
 // configure para cada uma).
 void        wb_set_geometry(int32_t size, int32_t position);
+// Cursor sobre a barra: 1 = mão (item clicável), 0 = seta.
+void        wb_set_cursor(int32_t pointer);
 void       *wb_display(void);
 void       *wb_surface(int32_t out);
 int32_t     wb_output_scale(int32_t out);

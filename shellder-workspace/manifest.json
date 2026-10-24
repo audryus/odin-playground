@@ -1,0 +1,17 @@
+{
+  "schemaVersion": 1,
+  "id": "shellder.workspaces",
+  "name": "Workspaces",
+  "version": "1.0.0",
+  "author": "audryus",
+  "description": "Workspace indicators per monitor",
+  "kinds": ["bar-widget"],
+  "entryPoints": {
+    "barWidget": ["python3", "-u", "workspaces.py"]
+  },
+  "barWidget": {
+    "displayName": "Workspaces",
+    "category": "Compositor",
+    "defaultSection": "left"
+  }
+}

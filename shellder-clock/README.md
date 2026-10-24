@@ -1,19 +1,20 @@
 # shellder-clock
 
-Plugin de relógio para o [Shellder](../shellder), porte do clock do Omarchy
-(`/usr/share/omarchy/shell/plugins/panels/clock/`): data/hora na barra e um
-calendário ao clicar.
+Clock plugin for [Shellder](../shellder), a port of Omarchy's clock
+(`/usr/share/omarchy/shell/plugins/panels/clock/`): date/time on the bar, a
+calendar on click and a big clock on hover.
 
-## Na barra
+## On the bar
 
-| Ação           | O que faz |
-|----------------|-----------|
-| —              | Mostra a hora no formato configurado (padrão `dddd HH:mm`; na barra vertical `HH`/`—`/`mm` empilhados). Atualiza na virada do minuto |
-| Clique esquerdo | Abre/fecha o calendário |
-| Clique direito  | Passa para o próximo formato da lista (e grava) |
-| Clique do meio  | `omarchy-menu-timezone` (seletor de fuso) |
+| Action        | What it does |
+|---------------|--------------|
+| —             | Shows the time in the configured format (default `dddd HH:mm`; on a vertical bar `HH`/`—`/`mm` stacked). Updates when the minute turns |
+| hover         | A passive card with the time in big digits and live seconds (`"hover": "event"` in the manifest) |
+| left click    | Opens/closes the calendar |
+| right click   | Shellder's menu, declared in `manifest.json`: *Next format*, *Open calendar*, *Change timezone…*, *Copy date* |
+| middle click  | `omarchy-menu-timezone` (timezone picker), as in Omarchy |
 
-Formatos do clique direito — os mesmos do Omarchy:
+*Next format* walks the same list Omarchy's right click does, and saves it:
 
 ```
 dddd HH:mm        dddd h:mm AP      HH:mm             h:mm AP
@@ -22,32 +23,31 @@ ddd d MMM HH:mm   ddd d MMM h:mm AP d MMMM 'W'ww yyyy yyyy-MM-dd HH:mm
 
 Vertical: `HH\n—\nmm`, `h\n—\nmm\nAP`, `dd\nMMM\n'W'ww\n''yy`, `HH\nmm`.
 
-## Calendário
+## Calendar
 
-- Hoje em destaque; clicar nele volta ao mês atual quando você navegou.
-- Progresso do ano. **Dois cliques** no trilho pedem ano de nascimento e
-  expectativa de vida (Enter grava, Esc cancela, Tab alterna) e mostram um
-  segundo trilho, *LIFE*. Dois cliques nele o escondem.
-- Grade fixa de 6 semanas com número da semana ISO. O **W** alterna o início
-  da semana entre segunda e domingo (padrão: o do locale).
-- Mudar de mês: setas na tela, scroll na grade, `←`/`→` ou `[`/`]`;
-  ano: `↑`/`↓` ou `{`/`}`; `t` ou Enter volta para hoje; `w` alterna o início
-  da semana; `Esc` ou clicar fora fecha.
+- Today in the hero; clicking it goes back to the current month after
+  browsing.
+- Year progress. **Double click** the rail to enter a birth year and a life
+  expectancy (Enter saves, Esc cancels, Tab switches) and get a second rail,
+  *LIFE*. Double click it to hide it.
+- Fixed 6-week grid with ISO week numbers. **W** flips the week start between
+  Monday and Sunday (default: the locale's).
+- Change month: on-screen chevrons, scroll on the grid, `←`/`→` or `[`/`]`;
+  year: `↑`/`↓` or `{`/`}`; `t` or Enter goes back to today; `w` flips the
+  week start; `Esc` or a click outside closes.
 
-O popup segue o desenho do `KeyboardPanel` do Omarchy: uma layer cobrindo a
-área útil do monitor (a barra fica de fora) com o card dentro; clicar fora do
-card fecha, e o mouse e o teclado funcionam dentro dele.
+The popup follows Omarchy's KeyboardPanel design (through
+`shellder_kit.panel.Panel`): one layer covering the output's usable area (the
+bar stays outside) with the card inside; a click outside the card closes it,
+and mouse and keyboard work inside. Look: the Omarchy theme from Shellder's
+`config` event — font and size scale, `[popups]` colors, Hyprland's active
+border color/width and rounding, control hover colors; distance from the bar
+is Hyprland's `gaps_out`.
 
-O visual segue o tema do Omarchy que o Shellder manda no evento `config`:
-fonte (alias `monospace`) e escala de tamanhos, cores de popup
-(`[popups]` do `shell.toml`), borda (cor e espessura da borda ativa do
-Hyprland), cantos (`decoration:rounding`) e o hover dos controles. A distância
-até a barra é o `gaps_out` do Hyprland.
+## Settings
 
-## Preferências
-
-Ficam na entrada do plugin em `bar.layout` do `~/.config/shellder/shell.json`,
-com as mesmas chaves do `omarchy.clock` no `~/.config/omarchy/shell.json`:
+They live in the plugin's entry in `bar.layout` of `~/.config/shellder/shell.json`,
+with the same keys as `omarchy.clock` in `~/.config/omarchy/shell.json`:
 
 ```json
 {
@@ -62,28 +62,29 @@ com as mesmas chaves do `omarchy.clock` no `~/.config/omarchy/shell.json`:
 }
 ```
 
-Todas são opcionais. O clique direito, o **W** e o *memento mori* gravam aqui
-(o plugin manda `{"settings": ...}` e o Shellder atualiza o arquivo); editar o
-arquivo à mão vale na hora.
+All optional. *Next format*, **W** and *memento mori* write here (the plugin
+sends `{"settings": ...}` and Shellder updates the file); editing the file by
+hand applies immediately.
 
-## Instalar
+## Install
 
 ```bash
-make install   # symlink em ~/.config/shellder/plugins/shellder-clock
-make test      # testes do modelo (datas, formatos, grade)
+make install   # symlink into ~/.config/shellder/plugins/shellder-clock
+make test      # model tests (dates, formats, grid)
 ```
 
-Depende de Python 3, PyGObject, GTK 4 e gtk4-layer-shell (já presentes no
-Omarchy). Sem GTK/layer-shell o rótulo funciona e o calendário fica desligado.
+Needs Python 3, PyGObject, GTK 4, gtk4-layer-shell and pycairo (all present
+on Omarchy). Without GTK/layer-shell the label still works and the popups are
+disabled. Uses the kit shipped with Shellder (`$SHELLDER_KIT`).
 
-## Arquivos
+## Files
 
 ```
-manifest.json  manifest (kinds: bar-widget)
-clock.py       entrada: protocolo do Shellder, rótulo, formatos, preferências
-panel.py       calendário (GTK4 + gtk4-layer-shell), porte do Panel.qml
-model.py       datas e formatos, porte do Model.js (sem GTK, testável)
-tests/         testes do model.py
+manifest.json      manifest (kinds: bar-widget, hover: event, right-click menu)
+clock.py           entry point: label, formats, menu, hover clock
+calendar_panel.py  calendar, port of Panel.qml on shellder_kit.panel.Panel
+model.py           dates and formats, port of Model.js (no GTK, tested)
+tests/             model.py tests
 ```
 
-O GTK só é carregado quando o calendário abre pela primeira vez.
+GTK is only loaded the first time a popup opens.

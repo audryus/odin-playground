@@ -2,9 +2,9 @@
   "schemaVersion": 1,
   "id": "shellder.clock",
   "name": "Clock",
-  "version": "1.0.0",
+  "version": "1.1.0",
   "author": "audryus",
-  "description": "Date/time label with a calendar popup",
+  "description": "Date/time label with a calendar popup and a big hover clock",
   "kinds": ["bar-widget"],
   "entryPoints": {
     "barWidget": ["python3", "-u", "clock.py"]
@@ -12,6 +12,14 @@
   "barWidget": {
     "displayName": "Clock",
     "category": "Time",
-    "defaultSection": "center"
+    "defaultSection": "center",
+    "hover": "event",
+    "menu": [
+      {"id": "next-format", "label": "Next format", "icon": "󰥔"},
+      {"id": "calendar", "label": "Open calendar", "icon": "󰃭"},
+      {"type": "separator"},
+      {"label": "Change timezone…", "icon": "󰥔", "exec": "omarchy-menu-timezone"},
+      {"label": "Copy date", "icon": "󰆏", "exec": "date '+%A, %d %B %Y %H:%M' | tr -d '\\n' | wl-copy"}
+    ]
   }
 }

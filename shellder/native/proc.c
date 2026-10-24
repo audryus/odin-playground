@@ -100,6 +100,22 @@ int sh_write(int32_t fd, const void *data, int32_t len) {
 	return (int)write(fd, data, (size_t)len);
 }
 
+void sh_run_detached(const char *cmd) {
+	pid_t pid = fork();
+	if (pid < 0) return;
+	if (pid == 0) {
+		// Double fork so the command is reparented and never becomes our zombie.
+		setsid();
+		if (fork() != 0) _exit(0);
+		int null = open("/dev/null", O_RDWR);
+		if (null >= 0) { dup2(null, 0); dup2(null, 1); dup2(null, 2); }
+		signal(SIGPIPE, SIG_DFL);
+		execl("/bin/sh", "sh", "-c", cmd, (char *)NULL);
+		_exit(127);
+	}
+	waitpid(pid, NULL, 0);
+}
+
 int sh_capture(const char *cmd, char *out, int32_t out_len) {
 	if (out_len <= 0) return -1;
 	out[0] = 0;

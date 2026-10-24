@@ -43,6 +43,50 @@ Segment :: struct {
 	width:   f32, // logical px; 0 = fit the content
 }
 
+// Hover_Mode comes from the manifest's barWidget.hover:
+//   "tooltip" (default) Shellder shows the item/segment tooltip; the plugin
+//                       still gets "hover" events
+//   "event"             no Shellder tooltip: the plugin gets "hover" events
+//                       (with the item rect) and shows whatever it wants
+//   "none"              neither
+Hover_Mode :: enum { Tooltip, Event, None }
+
+// Menu_Item is one entry of the right-click menu, declared in the manifest's
+// barWidget.menu or replaced at runtime with {"menu": [...]} on stdout.
+// "exec" runs a shell command; otherwise {"event":"menu","id":...} goes to
+// the plugin.
+Menu_Item :: struct {
+	id, label, icon, exec: string,
+	separator: bool,
+	disabled:  bool,
+	checked:   int, // -1 = no check mark, 0 = unchecked, 1 = checked
+}
+
+menu_free :: proc(items: ^[dynamic]Menu_Item) {
+	for it in items { delete(it.id); delete(it.label); delete(it.icon); delete(it.exec) }
+	clear(items)
+}
+
+// menu_parse reads a JSON menu array into `out` (cleared first).
+menu_parse :: proc(arr: json.Array, out: ^[dynamic]Menu_Item) {
+	menu_free(out)
+	for v in arr {
+		o := v.(json.Object) or_continue
+		str :: proc(o: json.Object, k: string) -> string {
+			s, _ := o[k].(json.String)
+			return strings.clone(s)
+		}
+		kind, _ := o["type"].(json.String)
+		checked := -1
+		if c, ok := o["checked"].(json.Boolean); ok { checked = c ? 1 : 0 }
+		disabled, _ := o["disabled"].(json.Boolean)
+		append(out, Menu_Item{
+			id = str(o, "id"), label = str(o, "label"), icon = str(o, "icon"), exec = str(o, "exec"),
+			separator = kind == "separator", disabled = disabled, checked = checked,
+		})
+	}
+}
+
 Plugin_View :: struct {
 	text, icon, color: string,
 	tooltip: string,
@@ -79,6 +123,8 @@ Plugin :: struct {
 	argv:            []string,
 	default_section: Section,
 	manifest_icon:   string,
+	hover_mode:      Hover_Mode,
+	menu:            [dynamic]Menu_Item, // manifest menu, replaced by {"menu": ...}
 
 	// displayed state (updated by the plugin): `view` applies to every bar; an
 	// update with "monitor" goes to per_monitor[monitor], which then replaces
@@ -269,15 +315,21 @@ plugin_reload :: proc(set: ^Plugin_Set, p: ^Plugin) -> bool {
 	}
 	p.id, p.name, p.argv = q.id, q.name, q.argv
 	p.manifest_icon, p.default_section = q.manifest_icon, q.default_section
+	p.hover_mode = q.hover_mode
+	menu_free(&p.menu); delete(p.menu)
+	p.menu = q.menu
+	q.menu = {}
 	p.backoff = RESTART_MIN
 	p.restart_at = {}
-	delete(q.dir); view_free(&q.view); delete(q.per_monitor); delete(q.line_buf); free(q)
+	delete(q.dir); view_free(&q.view); delete(q.per_monitor); delete(q.line_buf)
+	menu_free(&q.menu); delete(q.menu); free(q)
 	return true
 }
 
 plugin_free :: proc(p: ^Plugin) {
 	delete(p.id); delete(p.name); delete(p.dir)
 	delete(p.manifest_icon)
+	menu_free(&p.menu); delete(p.menu)
 	view_free(&p.view)
 	for k, &v in p.per_monitor { delete(k); view_free(&v) }
 	delete(p.per_monitor)
@@ -407,6 +459,11 @@ manifest_load :: proc(dir: string) -> (p: ^Plugin, ok: bool) {
 	icon, _ := bw["icon"].(json.String)
 	p.manifest_icon = strings.clone(icon)
 	p.view.icon     = strings.clone(icon)
+	switch hm, _ := bw["hover"].(json.String); hm {
+	case "event": p.hover_mode = .Event
+	case "none":  p.hover_mode = .None
+	}
+	if arr, ok := bw["menu"].(json.Array); ok { menu_parse(arr, &p.menu) }
 	p.pid, p.in_fd, p.out_fd = -1, -1, -1
 	p.backoff = RESTART_MIN
 	return p, true
@@ -597,6 +654,7 @@ plugin_apply_line :: proc(p: ^Plugin, line: string) -> bool {
 			})
 		}
 	}
+	if arr, ok := obj["menu"].(json.Array); ok { menu_parse(arr, &p.menu) }
 	if st, ok := obj["settings"].(json.Object); ok {
 		append(&p.settings_updates, json.clone_value(st, context.allocator).(json.Object))
 	}

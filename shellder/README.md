@@ -43,6 +43,7 @@ part). If missing, Shellder creates:
 {
   "bar": {
     "position": "bottom",
+    "centerAnchor": "shellder.clock",
     "transparent": false,
     "layout": {
       "left": [],
@@ -58,6 +59,7 @@ part). If missing, Shellder creates:
 | Key               | Description |
 |-------------------|-------------|
 | `bar.position`    | `bottom`, `top`, `left` or `right` |
+| `bar.centerAnchor` | Plugin id kept exactly at the bar's center (Omarchy's key): center items before it grow away to the start, items after it grow to the end, so an expanding item never moves it |
 | `bar.transparent` | `true` makes the background transparent and picks the text color with `omarchy-bar-text-color`, like Omarchy. **Double click an empty area of the bar to toggle it** (saved here) |
 | `bar.layout.*`    | Items of each section, in order: `{"id": "<plugin id>", <settings>}` |
 | `disabled`        | ids of installed plugins that must not show nor run |
@@ -155,6 +157,8 @@ message per line**.
 | `entryPoints.barWidget`       | yes | What to run. String: path of an executable inside the folder (needs `chmod +x` and a shebang). Array: command + arguments, looked up in `PATH` (`["node", "index.js"]`, `["./my-binary"]`) |
 | `barWidget.icon`              | no  | Initial icon: one or more characters. The Omarchy font is a Nerd Font, so Nerd Font glyphs work |
 | `barWidget.defaultSection`    | no  | `left`, `center` or `right` (default `right`); on a vertical bar: top, middle, bottom |
+| `barWidget.hover`             | no  | What hovering does: `"tooltip"` (default) — Shellder shows the item/segment `tooltip`; `"event"` — no Shellder tooltip, the plugin gets `hover` events and shows its own popup; `"none"` — nothing. `hover` events are sent in both `tooltip` and `event` modes |
+| `barWidget.menu`              | no  | Right-click menu drawn by Shellder (see below). When set, the right click opens it instead of reaching the plugin |
 | `name`, `version`, `author`, `description`, `schemaVersion`, `barWidget.displayName`, `barWidget.category` | no | Informational |
 
 The process runs with the plugin folder as `cwd` and gets these variables:
@@ -187,6 +191,7 @@ Each line is an update. It can be a JSON object:
 | `segments` | Buttons inside the item: `[{"id": "1", "text": "1", "icon": "", "color": "accent", "opacity": 0.5, "width": 20, "font": "caption", "tooltip": "..."}]` (only `id` is required). Replaces the previous list. A click on a segment carries `"segment": "<id>"` |
 | `monitor`  | Output connector (`"DP-1"`): the update applies only to that output's bar. Without it, it applies to every bar that has not received its own |
 | `settings` | Settings to save in the plugin's `shell.json` entry (`null` deletes a key). Shellder saves them and sends a new `config` |
+| `menu`     | Replaces the right-click menu at runtime (same format as `barWidget.menu`; `[]` disables it) |
 
 Missing fields keep their previous value. **Any line that does not start with
 `{` becomes the `text`**, so a script that just `echo`s already works.
@@ -234,6 +239,7 @@ use these values to look like Omarchy.
  "item": {"x": 900, "y": 2, "width": 120, "height": 22}}
 {"event": "scroll", "direction": "up", "monitor": "DP-1", "bar": {...}, "item": {...}}
 {"event": "hover", "hovered": true, "monitor": "DP-1"}
+{"event": "menu", "id": "calendar", "monitor": "DP-1"}
 ```
 
 - `button`: `left`, `middle` or `right`. `direction`: `up` or `down`.
@@ -246,6 +252,34 @@ use these values to look like Omarchy.
 
 Reading stdin is optional: if the plugin does not read and the pipe fills up,
 lines are dropped (a plugin never freezes the bar).
+
+### Tooltips and the right-click menu
+
+Shellder draws both itself, with the Omarchy theme, so they work for plugins
+in any language:
+
+- **Tooltip** — as in Omarchy's `Bar.qml`: shown 400 ms after the pointer
+  settles on an item, centered on it, 6 px from the bar, `[tooltip]` colors.
+  Text comes from the item's or segment's `tooltip`.
+- **Menu** — declared in the manifest (or sent as `{"menu": [...]}`):
+
+```json
+"barWidget": {
+  "menu": [
+    {"id": "calendar", "label": "Open calendar", "icon": "󰃭"},
+    {"label": "Change timezone…", "exec": "omarchy-menu-timezone"},
+    {"type": "separator"},
+    {"id": "24h", "label": "24-hour clock", "checked": true},
+    {"id": "later", "label": "Not yet", "disabled": true}
+  ]
+}
+```
+
+  An entry with `exec` runs that shell command (detached); any other entry
+  sends `{"event": "menu", "id": "<id>", "monitor": "DP-1"}` to the plugin.
+  `checked` (`true`/`false`) shows a check column, `icon` an icon column.
+  A click outside the menu, or on the bar, closes it; a second right click on
+  the same item toggles it.
 
 ### Python plugin kit
 
@@ -342,4 +376,9 @@ kit/           plugin kit (kit/python/shellder_kit)
 Skald's *embedded* backend: the C code in `native/` creates one surface per
 output and all of them are drawn by the same renderer.
 
-Not there yet: drawing tooltips, keyboard input on the bar.
+```
+popups.odin    Shellder's own popups: tooltip and right-click menu
+```
+
+Not there yet: keyboard navigation in the right-click menu (Esc / arrows),
+closing the menu by clicking on another output.

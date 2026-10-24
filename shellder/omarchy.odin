@@ -37,6 +37,10 @@ Omarchy_Theme :: struct {
 	bar_background, bar_text, bar_active: RGBA,
 	popup_background, popup_text, popup_border: RGBA,
 	popup_border_width: int,
+	// [tooltip] and [menu] surfaces (Color.qml: tooltip, menu).
+	tooltip_background, tooltip_text, tooltip_border: RGBA,
+	menu_background, menu_text, menu_border: RGBA,
+	menu_selected_background, menu_selected_text, menu_selected_border: RGBA,
 	hover_fill, hover_border, selected_fill: RGBA,
 	// Remaining control states (Style.qml: *FillFor/*BorderFor/*StateColor).
 	normal_fill, normal_border, hover_color, selected_color, selected_border, pressed_fill: RGBA,
@@ -110,6 +114,15 @@ theme_load :: proc(tw: ^Theme_Watch, transparent: bool, position: Position, vert
 	t.popup_background = composed(&r, "popups.background", "popups.background-alpha", t.background, 1)
 	t.popup_text       = flat_color(&r, pick(&r, "popups.text"), t.foreground)
 	t.popup_border     = composed(&r, "popups.border", "popups.border-alpha", t.accent, 1)
+	t.tooltip_background = composed(&r, "tooltip.background", "tooltip.background-alpha", t.background, 1)
+	t.tooltip_text       = flat_color(&r, pick(&r, "tooltip.text"), t.foreground)
+	t.tooltip_border     = composed(&r, "tooltip.border", "tooltip.border-alpha", t.foreground, 1)
+	t.menu_background    = composed(&r, "menu.background", "menu.background-alpha", t.background, 1)
+	t.menu_text          = flat_color(&r, pick(&r, "menu.text"), t.foreground)
+	t.menu_border        = composed(&r, "menu.border", "menu.border-alpha", t.foreground, 1)
+	t.menu_selected_background = composed(&r, "menu.selected-background", "menu.selected-background-alpha", t.foreground, 0.08)
+	t.menu_selected_text       = flat_color(&r, pick(&r, "menu.selected-text"), t.accent)
+	t.menu_selected_border     = composed(&r, "menu.selected-border", "menu.selected-border-alpha", t.foreground, 0)
 
 	hover := flat_color(&r, pick(&r, "controls.hover-cursor-color"), t.foreground)
 	t.hover_fill   = with_alpha(hover, num(&r, "controls.hover-cursor-fill-alpha", 0.08))
@@ -224,6 +237,11 @@ theme_json :: proc(t: ^Omarchy_Theme, allocator := context.allocator) -> string 
 		t.bar_icon_slot, t.bar_icon_canvas, t.bar_icon_font, t.bar_status_slot)
 	fmt.sbprintf(&b, `"popup":{{"background":"%s","text":"%s","border":"%s","borderWidth":%d}},`,
 		h(t.popup_background), h(t.popup_text), h(t.popup_border), t.popup_border_width)
+	fmt.sbprintf(&b, `"tooltip":{{"background":"%s","text":"%s","border":"%s"}},`,
+		h(t.tooltip_background), h(t.tooltip_text), h(t.tooltip_border))
+	fmt.sbprintf(&b, `"menu":{{"background":"%s","text":"%s","border":"%s","selectedBackground":"%s","selectedText":"%s","selectedBorder":"%s"}},`,
+		h(t.menu_background), h(t.menu_text), h(t.menu_border),
+		h(t.menu_selected_background), h(t.menu_selected_text), h(t.menu_selected_border))
 	fmt.sbprintf(&b, `"controls":{{"normal":"%s","normalBorder":"%s","normalBorderWidth":%d,"hover":"%s","hoverBorder":"%s","hoverBorderWidth":%d,"hoverColor":"%s","selected":"%s","selectedBorder":"%s","selectedBorderWidth":%d,"selectedColor":"%s","pressed":"%s"}}}}`,
 		h(t.normal_fill), h(t.normal_border), t.normal_border_width,
 		h(t.hover_fill), h(t.hover_border), t.hover_border_width, h(t.hover_color),

@@ -21,7 +21,18 @@ import "gui:skald"
 
 Msg :: union {
 	Plugin_Input,
+	Open_Menu,
+	Menu_Pick,
+	Menu_Dismiss,
 }
+
+Open_Menu :: struct {
+	plugin:  ^Plugin,
+	bar_out: i32,
+	rect:    skald.Rect,
+}
+Menu_Pick    :: struct { popup: ^Popup, index: int }
+Menu_Dismiss :: struct { popup: ^Popup }
 
 Plugin_Input :: struct {
 	plugin: ^Plugin,
@@ -34,12 +45,19 @@ update :: proc(app: ^App, m: Msg) {
 	switch v in m {
 	case Plugin_Input:
 		plugin_send_event(v.plugin, v.ev, app.cfg.position)
+	case Open_Menu:
+		menu_open(app, v.bar_out, v.plugin, v.rect)
+	case Menu_Pick:
+		if popup_alive(app, v.popup) { menu_pick(app, v.popup, v.index) }
+	case Menu_Dismiss:
+		if popup_alive(app, v.popup) { popup_close(app, v.popup) }
 	}
 }
 
 // ---------------------------------------------------------------------------
 
 Bar :: struct {
+	out:   i32, // index in app.bars (the shim's output id)
 	win:   ^skald.Window,
 	name:  string, // output name (DP-1, HDMI-A-1...)
 	dirty: bool,
@@ -69,6 +87,14 @@ App :: struct {
 	theme:       skald.Theme,
 	size:        int,    // effective bar thickness
 	theme_json:  string, // theme serialized for the "config" event
+
+	// Shellder's own popups (popups.odin), indexed by id - WB_MAX_OUTPUTS.
+	popups:      [WB_MAX_POPUPS]^Popup,
+	tooltip:     ^Popup,
+	menu:        ^Popup,
+	hover_now:   Hover_Target, // what the pointer is over (set while drawing)
+	hover_shown: Hover_Target, // target the tooltip delay is running for
+	hover_since: time.Tick,
 	wb_position: Position, // edge the surfaces are currently anchored to
 	pending_theme: bool,   // re-apply the theme next cycle (transparency changed)
 
@@ -165,14 +191,42 @@ view :: proc(app: ^App, bar: ^Bar, ctx: ^skald.Ctx(Msg)) -> skald.View {
 		return out[:]
 	}
 	left   := section(app, bar, ctx, .Left)
-	center := section(app, bar, ctx, .Center)
 	right  := section(app, bar, ctx, .Right)
 
 	// Three blocks: start and end with flex(1) so the center is truly centered.
 	// As in Omarchy's Bar.qml: items packed together (each has its own
 	// margin) and 8 px at both ends.
 	EDGE :: 8
-	if vertical(app) {
+	vert := vertical(app)
+
+	// bar.centerAnchor (Bar.qml: centerAnchorModule): the anchor item sits
+	// exactly at the bar's center; center items before it hug its start edge
+	// and grow away from it, items after it hug its end edge. So an item that
+	// expands (indicators revealing on hover) never moves the anchor.
+	before, anchor, after, has_anchor := split_center(app, bar, ctx)
+	if has_anchor {
+		stack :: proc(vert: bool, views: []skald.View, align: skald.Main_Align = .Start) -> skald.View {
+			if vert { return skald.col(..views, main_align = align, cross_align = .Center) }
+			return skald.row(..views, main_align = align, cross_align = .Center)
+		}
+		fill := skald.flex(1, skald.spacer(0))
+		start_side := []skald.View{stack(vert, left), fill, stack(vert, before)}
+		end_side   := []skald.View{stack(vert, after), fill, stack(vert, right)}
+		parts := []skald.View{
+			skald.spacer(EDGE),
+			skald.flex(1, stack(vert, start_side)),
+			anchor,
+			skald.flex(1, stack(vert, end_side)),
+			skald.spacer(EDGE),
+		}
+		if vert {
+			return skald.col(..parts, width = f32(app.size), cross_align = .Center, bg = th.color.bg)
+		}
+		return skald.row(..parts, height = f32(app.size), cross_align = .Center, bg = th.color.bg)
+	}
+
+	center := section(app, bar, ctx, .Center)
+	if vert {
 		return skald.col(
 			skald.spacer(EDGE),
 			skald.flex(1, skald.col(..left, spacing = gap, cross_align = .Center)),
@@ -194,6 +248,29 @@ view :: proc(app: ^App, bar: ^Bar, ctx: ^skald.Ctx(Msg)) -> skald.View {
 		cross_align = .Center,
 		bg          = th.color.bg,
 	)
+}
+
+// split_center splits the center section around bar.centerAnchor. ok =
+// false when there is no anchor or it is not in the center section.
+split_center :: proc(app: ^App, bar: ^Bar, ctx: ^skald.Ctx(Msg)) -> (before: []skald.View, anchor: skald.View, after: []skald.View, ok: bool) {
+	if app.cfg.center_anchor == "" { return }
+	idx := -1
+	for p, i in app.layout[.Center] {
+		if p.id == app.cfg.center_anchor { idx = i }
+	}
+	if idx < 0 { return }
+	b := make([dynamic]skald.View, context.temp_allocator)
+	a := make([dynamic]skald.View, context.temp_allocator)
+	for p, i in app.layout[.Center] {
+		v, vok := view_plugin(app, p, bar, ctx)
+		if i == idx {
+			anchor = vok ? v : skald.spacer(0)
+			continue
+		}
+		if !vok { continue }
+		append(i < idx ? &b : &a, v)
+	}
+	return b[:], anchor, a[:], true
 }
 
 // view_plugin draws an item like Omarchy's bar buttons (Ui/WidgetButton.qml,
@@ -242,7 +319,7 @@ view_plugin :: proc(app: ^App, p: ^Plugin, bar: ^Bar, ctx: ^skald.Ctx(Msg)) -> (
 			child = skald.row(skald.spacer(MARGIN), skald.row(..inner[:], spacing = th.spacing.sm, cross_align = .Center),
 				skald.spacer(MARGIN), height = bar_size, cross_align = .Center)
 		}
-		append(&parts, clickable_zone(ctx, p, bar, id, child, hovered, ""))
+		append(&parts, clickable_zone(app, ctx, p, bar, id, child, hovered, "", pv.tooltip))
 	}
 
 	// Segments: one button per segment, each with its id in the click.
@@ -272,12 +349,13 @@ view_plugin :: proc(app: ^App, p: ^Plugin, bar: ^Bar, ctx: ^skald.Ctx(Msg)) -> (
 			child = skald.col(skald.text(label, c, size, font = app.font),
 				width = w, padding = 5, main_align = .Center, cross_align = .Center)
 		}
-		append(&parts, clickable_zone(ctx, p, bar, id, child, hovered, sg.id))
+		append(&parts, clickable_zone(app, ctx, p, bar, id, child, hovered, sg.id,
+			sg.tooltip != "" ? sg.tooltip : pv.tooltip))
 	}
 
 	// "hover" to the plugin when the pointer enters/leaves the item on this bar
 	// (Omarchy's indicators reveal the inactive ones this way).
-	if p.hovered_on[bar.name] != any_hover {
+	if p.hover_mode != .None && p.hovered_on[bar.name] != any_hover {
 		if _, had := p.hovered_on[bar.name]; !had {
 			p.hovered_on[strings.clone(bar.name)] = any_hover
 		} else {
@@ -295,18 +373,32 @@ view_plugin :: proc(app: ^App, p: ^Plugin, bar: ^Bar, ctx: ^skald.Ctx(Msg)) -> (
 
 // clickable_zone wraps `child` in a zone and sends the plugin the clicks and
 // scrolls over it, with the zone rect and the segment (if any).
-clickable_zone :: proc(ctx: ^skald.Ctx(Msg), p: ^Plugin, bar: ^Bar, id: skald.Widget_ID,
-                       child: skald.View, hovered: bool, segment: string) -> skald.View {
+clickable_zone :: proc(app: ^App, ctx: ^skald.Ctx(Msg), p: ^Plugin, bar: ^Bar, id: skald.Widget_ID,
+                       child: skald.View, hovered: bool, segment, tooltip: string) -> skald.View {
 	z := skald.zone(ctx, child, id)
-	if hovered { bar.over_item = true }
+	rect := ctx.widgets.states[id].last_rect
+	if hovered {
+		bar.over_item = true
+		// Tooltip target (manifest hover "tooltip", the default).
+		app.hover_now = Hover_Target{
+			set = true, bar_out = bar.out, plugin = p, segment = segment, rect = rect,
+			text = p.hover_mode == .Tooltip ? tooltip : "",
+		}
+	}
 	ev := Plugin_Event{
 		segment  = segment,
 		monitor  = bar.name,
-		item     = ctx.widgets.states[id].last_rect,
+		item     = rect,
 		bar_size = bar.win.size_logical,
 	}
 	for b in skald.Mouse_Button {
-		if skald.widget_clicked(ctx, id, b) {
+		if !skald.widget_clicked(ctx, id, b) { continue }
+		if b == .Right && len(p.menu) > 0 {
+			// The manifest/plugin menu takes the right click.
+			skald.send(ctx, Open_Menu{plugin = p, bar_out = bar.out, rect = rect})
+			continue
+		}
+		{
 			e := ev
 			e.kind, e.button = .Click, b
 			skald.send(ctx, Plugin_Input{plugin = p, ev = e})
@@ -411,6 +503,7 @@ bar_configure :: proc(app: ^App, out: i32, w, h: i32) {
 	})
 	if !ok { return }
 	b.win  = new_clone(win)
+	b.out  = out
 	b.name = strings.clone_from_cstring(wb_output_name(out))
 
 	if !app.r_ready {
@@ -455,15 +548,42 @@ bar_close :: proc(app: ^App, out: i32) {
 	wb_output_destroy(out)
 }
 
+// handle_popup_event routes surface events of Shellder's own popups.
+handle_popup_event :: proc(app: ^App, ev: WB_Event) {
+	p := popup_by_id(app, ev.out)
+	if p == nil { return }
+	w := p.win
+	#partial switch ev.type {
+	case .Configure:
+		popup_configure(app, p, ev.a, ev.b)
+	case .Closed:
+		popup_close(app, p)
+	case .Enter, .Motion:
+		if w != nil { skald.input_feed_pointer_motion(w, {f32(ev.x), f32(ev.y)}) }
+	case .Leave:
+		if w != nil { skald.input_feed_pointer_motion(w, {-10_000, -10_000}) }
+	case .Button:
+		if w != nil {
+			btn: skald.Mouse_Button = ev.a == 0 ? .Left : ev.a == 1 ? .Middle : .Right
+			skald.input_feed_pointer_button(w, btn, ev.b != 0)
+		}
+	}
+}
+
 handle_wayland_events :: proc(app: ^App) {
 	ev: WB_Event
 	for wb_next_event(&ev) != 0 {
-		if ev.out < 0 || ev.out >= WB_MAX_OUTPUTS { continue }
+		if ev.out >= WB_MAX_OUTPUTS {
+			handle_popup_event(app, ev)
+			continue
+		}
+		if ev.out < 0 { continue }
 		w := app.bars[ev.out].win
 		#partial switch ev.type {
 		case .Configure:
 			bar_configure(app, ev.out, ev.a, ev.b)
 		case .Closed:
+			popups_close_for_bar(app, ev.out)
 			bar_close(app, ev.out)
 		case .Enter, .Motion:
 			if w != nil { skald.input_feed_pointer_motion(w, {f32(ev.x), f32(ev.y)}) }
@@ -505,6 +625,7 @@ render_bar :: proc(app: ^App, b: ^Bar) {
 			breakpoint = skald.breakpoint_for_width(f32(w.size_logical.x)),
 		}
 		b.over_item = false
+		if app.hover_now.bar_out == b.out { app.hover_now = {} }
 		v := view(app, b, &ctx)
 		skald.render_view(&app.r, v, {0, 0}, {f32(w.size_logical.x), f32(w.size_logical.y)})
 		skald.render_overlays(&app.r)
@@ -513,6 +634,10 @@ render_bar :: proc(app: ^App, b: ^Bar) {
 	// Hand cursor over clickable items, like Omarchy's PointingHandCursor.
 	if mp := w.input.mouse_pos; mp.x >= 0 && mp.y >= 0 {
 		wb_set_cursor(b.over_item ? 1 : 0)
+	}
+	// Any left/middle press on the bar closes an open menu.
+	if app.menu != nil && (w.input.mouse_pressed[.Left] || w.input.mouse_pressed[.Middle]) {
+		append(&app.msgs, Msg(Menu_Dismiss{popup = app.menu}))
 	}
 	check_double_click(app, b)
 	skald.input_begin(w) // reset input edges for the next frame
@@ -615,6 +740,10 @@ main :: proc() {
 			}
 			if b.dirty || b.win.had_events || deadline { render_bar(app, &b) }
 		}
+		for p in app.popups {
+			if p != nil && p.win != nil && (p.dirty || p.win.had_events) { render_popup(app, p) }
+		}
+		if app.r_ready { tooltip_update(app) }
 
 		if len(app.msgs) > 0 {
 			for m in app.msgs { update(app, m) }
@@ -631,8 +760,12 @@ main :: proc() {
 			if p.reaping { wake = time.time_add(time.now(), 100 * time.Millisecond) }
 			if p.restart_at != {} && time.diff(p.restart_at, wake) > 0 { wake = p.restart_at }
 		}
+		if d, ok := tooltip_wake(app); ok {
+			if at := time.time_add(time.now(), d); time.diff(at, wake) > 0 { wake = at }
+		}
 		any_dirty := false
 		for b in app.bars { if b.win != nil && b.dirty { any_dirty = true } }
+		for p in app.popups { if p != nil && p.win != nil && p.dirty { any_dirty = true } }
 		timeout := i32(0)
 		if !any_dirty {
 			timeout = i32(max(time.duration_milliseconds(time.diff(time.now(), wake)), 0)) + 1

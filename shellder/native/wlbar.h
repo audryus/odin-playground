@@ -8,6 +8,7 @@
 #include <stdint.h>
 
 #define WB_MAX_OUTPUTS 16
+#define WB_MAX_POPUPS  8   // popup ids are WB_MAX_OUTPUTS + index
 
 enum {
 	WB_EV_CONFIGURE = 1, // out, a=w, b=h (logical px) — surface ready/resized
@@ -28,6 +29,15 @@ typedef struct {
 
 enum { WB_POS_BOTTOM = 0, WB_POS_TOP, WB_POS_LEFT, WB_POS_RIGHT };
 
+// Popup surfaces drawn by Shellder itself (tooltips, menus). They share the
+// id space of outputs (ids >= WB_MAX_OUTPUTS) so every event and
+// wb_surface/wb_output_* call works on them too.
+enum {
+	WB_POPUP_TOOLTIP = 0, // sized w x h, no input (pointer passes through)
+	WB_POPUP_MENU    = 1, // covers the output's usable area, takes the pointer
+};
+enum { WB_EDGE_TOP = 1, WB_EDGE_BOTTOM = 2, WB_EDGE_LEFT = 4, WB_EDGE_RIGHT = 8 };
+
 // size = bar thickness (height when horizontal, width when vertical).
 int         wb_init(int32_t size, int32_t position, const char *namespace_);
 // Changes thickness and edge of every bar (the compositor sends a new
@@ -40,6 +50,15 @@ void       *wb_surface(int32_t out);
 int32_t     wb_output_scale(int32_t out);
 const char *wb_output_name(int32_t out);
 void        wb_output_destroy(int32_t out);
+
+// Opens a popup on output `out`: anchored to `edges` (WB_EDGE_* mask), with
+// the given margins (top, right, bottom, left) and size (0 = stretch along an
+// axis anchored at both ends). Returns its id or -1. A WB_EV_CONFIGURE for the
+// id follows, as for bars.
+int32_t     wb_popup_open(int32_t out, int32_t kind, int32_t edges,
+                          int32_t mt, int32_t mr, int32_t mb, int32_t ml,
+                          int32_t w, int32_t h);
+void        wb_popup_destroy(int32_t id);
 
 int         wb_fd(void);
 // Call before poll(); returns -1 if the connection dropped.

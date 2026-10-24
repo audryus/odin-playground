@@ -26,6 +26,15 @@ typedef struct {
 	int                           closed;
 } Output;
 
+typedef struct {
+	int                           used;
+	int                           out;
+	int                           kind;
+	struct wl_surface            *surface;
+	struct zwlr_layer_surface_v1 *layer;
+	int                           closed;
+} Popup;
+
 static struct {
 	struct wl_display          *display;
 	struct wl_registry         *registry;
@@ -44,6 +53,7 @@ static struct {
 	int         ready; // initial globals received
 
 	Output outputs[WB_MAX_OUTPUTS];
+	Popup  popups[WB_MAX_POPUPS];
 	int    pointer_out;
 
 	wb_event *events;
@@ -63,7 +73,22 @@ static int out_index(Output *o) { return (int)(o - S.outputs); }
 static int out_by_surface(struct wl_surface *s) {
 	for (int i = 0; i < WB_MAX_OUTPUTS; i++)
 		if (S.outputs[i].used && S.outputs[i].surface == s) return i;
+	for (int i = 0; i < WB_MAX_POPUPS; i++)
+		if (S.popups[i].used && S.popups[i].surface == s) return WB_MAX_OUTPUTS + i;
 	return -1;
+}
+
+// Popup or bar behind an id; the popup's output for output-level queries.
+static Popup *popup_by_id(int32_t id) {
+	int i = id - WB_MAX_OUTPUTS;
+	if (i < 0 || i >= WB_MAX_POPUPS || !S.popups[i].used) return NULL;
+	return &S.popups[i];
+}
+
+static int32_t output_of(int32_t id) {
+	if (id >= 0 && id < WB_MAX_OUTPUTS) return id;
+	Popup *p = popup_by_id(id);
+	return p ? p->out : -1;
 }
 
 // ---- layer surface ---------------------------------------------------------
@@ -86,6 +111,27 @@ static void layer_closed(void *data, struct zwlr_layer_surface_v1 *ls) {
 static const struct zwlr_layer_surface_v1_listener layer_listener = {
 	.configure = layer_configure,
 	.closed    = layer_closed,
+};
+
+static void popup_configure(void *data, struct zwlr_layer_surface_v1 *ls,
+                            uint32_t serial, uint32_t w, uint32_t h) {
+	Popup *p = data;
+	zwlr_layer_surface_v1_ack_configure(ls, serial);
+	push((wb_event){.type = WB_EV_CONFIGURE, .out = WB_MAX_OUTPUTS + (int32_t)(p - S.popups),
+	                .a = (int32_t)w, .b = (int32_t)h});
+}
+
+static void popup_closed(void *data, struct zwlr_layer_surface_v1 *ls) {
+	(void)ls;
+	Popup *p = data;
+	if (p->closed) return;
+	p->closed = 1;
+	push((wb_event){.type = WB_EV_CLOSED, .out = WB_MAX_OUTPUTS + (int32_t)(p - S.popups)});
+}
+
+static const struct zwlr_layer_surface_v1_listener popup_listener = {
+	.configure = popup_configure,
+	.closed    = popup_closed,
 };
 
 static void apply_geometry(Output *o);
@@ -399,18 +445,75 @@ void wb_set_geometry(int32_t size, int32_t position) {
 void *wb_display(void) { return S.display; }
 
 void *wb_surface(int32_t out) {
+	Popup *p = popup_by_id(out);
+	if (p) return p->surface;
 	if (out < 0 || out >= WB_MAX_OUTPUTS) return NULL;
 	return S.outputs[out].surface;
 }
 
 int32_t wb_output_scale(int32_t out) {
-	if (out < 0 || out >= WB_MAX_OUTPUTS) return 1;
+	out = output_of(out);
+	if (out < 0) return 1;
 	return S.outputs[out].scale;
 }
 
 const char *wb_output_name(int32_t out) {
-	if (out < 0 || out >= WB_MAX_OUTPUTS) return "";
+	out = output_of(out);
+	if (out < 0) return "";
 	return S.outputs[out].name;
+}
+
+int32_t wb_popup_open(int32_t out, int32_t kind, int32_t edges,
+                      int32_t mt, int32_t mr, int32_t mb, int32_t ml,
+                      int32_t w, int32_t h) {
+	if (out < 0 || out >= WB_MAX_OUTPUTS || !S.outputs[out].used || S.outputs[out].closed) return -1;
+	int slot = -1;
+	for (int i = 0; i < WB_MAX_POPUPS; i++)
+		if (!S.popups[i].used) { slot = i; break; }
+	if (slot < 0) return -1;
+
+	Popup *p = &S.popups[slot];
+	memset(p, 0, sizeof *p);
+	p->used = 1;
+	p->out  = out;
+	p->kind = kind;
+	p->surface = wl_compositor_create_surface(S.compositor);
+	wl_surface_set_buffer_scale(p->surface, S.outputs[out].scale);
+	if (kind == WB_POPUP_TOOLTIP) {
+		// Empty input region: the pointer goes straight through to the bar.
+		struct wl_region *none = wl_compositor_create_region(S.compositor);
+		wl_surface_set_input_region(p->surface, none);
+		wl_region_destroy(none);
+	}
+	p->layer = zwlr_layer_shell_v1_get_layer_surface(S.layer_shell, p->surface,
+		S.outputs[out].output, ZWLR_LAYER_SHELL_V1_LAYER_OVERLAY,
+		kind == WB_POPUP_TOOLTIP ? "shellder-tooltip" : "shellder-menu");
+	uint32_t anchor = 0;
+	if (edges & WB_EDGE_TOP)    anchor |= ZWLR_LAYER_SURFACE_V1_ANCHOR_TOP;
+	if (edges & WB_EDGE_BOTTOM) anchor |= ZWLR_LAYER_SURFACE_V1_ANCHOR_BOTTOM;
+	if (edges & WB_EDGE_LEFT)   anchor |= ZWLR_LAYER_SURFACE_V1_ANCHOR_LEFT;
+	if (edges & WB_EDGE_RIGHT)  anchor |= ZWLR_LAYER_SURFACE_V1_ANCHOR_RIGHT;
+	zwlr_layer_surface_v1_set_anchor(p->layer, anchor);
+	zwlr_layer_surface_v1_set_margin(p->layer, mt, mr, mb, ml);
+	zwlr_layer_surface_v1_set_size(p->layer, (uint32_t)(w > 0 ? w : 0), (uint32_t)(h > 0 ? h : 0));
+	// Exclusive zone 0: placed inside the usable area, so it never covers the bar.
+	zwlr_layer_surface_v1_set_exclusive_zone(p->layer, 0);
+	zwlr_layer_surface_v1_set_keyboard_interactivity(p->layer,
+		ZWLR_LAYER_SURFACE_V1_KEYBOARD_INTERACTIVITY_NONE);
+	zwlr_layer_surface_v1_add_listener(p->layer, &popup_listener, p);
+	wl_surface_commit(p->surface);
+	wl_display_flush(S.display);
+	return WB_MAX_OUTPUTS + slot;
+}
+
+void wb_popup_destroy(int32_t id) {
+	Popup *p = popup_by_id(id);
+	if (!p) return;
+	if (S.pointer_out == id) S.pointer_out = -1;
+	if (p->layer)   zwlr_layer_surface_v1_destroy(p->layer);
+	if (p->surface) wl_surface_destroy(p->surface);
+	memset(p, 0, sizeof *p);
+	wl_display_flush(S.display);
 }
 
 void wb_output_destroy(int32_t out) {

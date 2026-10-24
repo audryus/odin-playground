@@ -15,6 +15,14 @@ foreign import native {
 foreign import vulkan "system:vulkan"
 
 WB_MAX_OUTPUTS :: 16
+WB_MAX_POPUPS  :: 8
+
+WB_POPUP_TOOLTIP :: 0
+WB_POPUP_MENU    :: 1
+WB_EDGE_TOP    :: 1
+WB_EDGE_BOTTOM :: 2
+WB_EDGE_LEFT   :: 4
+WB_EDGE_RIGHT  :: 8
 
 WB_Event_Type :: enum i32 {
 	None      = 0,
@@ -44,6 +52,8 @@ foreign native {
 	wb_output_scale   :: proc(out: i32) -> i32 ---
 	wb_output_name    :: proc(out: i32) -> cstring ---
 	wb_output_destroy :: proc(out: i32) ---
+	wb_popup_open     :: proc(out, kind, edges, mt, mr, mb, ml, w, h: i32) -> i32 ---
+	wb_popup_destroy  :: proc(id: i32) ---
 	wb_fd             :: proc() -> c.int ---
 	wb_before_poll    :: proc() -> c.int ---
 	wb_after_poll     :: proc(readable: c.int) -> c.int ---
@@ -59,6 +69,7 @@ foreign native {
 	sh_reap         :: proc(pid: i32) -> c.int ---
 	sh_write        :: proc(fd: i32, data: rawptr, len: i32) -> c.int ---
 	sh_capture      :: proc(cmd: cstring, out: [^]u8, out_len: i32) -> c.int ---
+	sh_run_detached :: proc(cmd: cstring) ---
 }
 
 @(default_calling_convention = "c")

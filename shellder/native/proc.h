@@ -28,6 +28,11 @@ int  sh_reap(int32_t pid);
 // Non-blocking write. Returns bytes written or -1.
 int  sh_write(int32_t fd, const void *data, int32_t len);
 
+// Runs `cmd` through /bin/sh fully detached (own session, reparented to
+// init, stdio on /dev/null). For menu actions and other fire-and-forget
+// commands.
+void sh_run_detached(const char *cmd);
+
 // Runs `cmd` through /bin/sh and stores its stdout (NUL-terminated,
 // truncated to out_len). Returns the number of bytes read, or -1. Blocking:
 // only for quick commands (fc-match, hyprctl getoption).

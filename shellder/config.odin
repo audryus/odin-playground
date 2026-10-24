@@ -57,6 +57,7 @@ Config :: struct {
 
 	position:    Position,
 	transparent: bool,
+	center_anchor: string, // bar.centerAnchor: plugin id kept at the bar's center
 
 	// The whole document: keys Shellder does not know are preserved on save.
 	doc: json.Object,
@@ -65,6 +66,7 @@ Config :: struct {
 DEFAULT_SHELL_JSON :: `{
   "bar": {
     "position": "bottom",
+    "centerAnchor": "shellder.clock",
     "transparent": false,
     "layout": {
       "left": [],
@@ -141,6 +143,9 @@ config_read :: proc(cfg: ^Config) -> bool {
 		if !found { fmt.eprintfln("shellder: invalid position %q (bottom, top, left, right)", name) }
 	}
 	cfg.transparent, _ = bar["transparent"].(json.Boolean)
+	delete(cfg.center_anchor)
+	anchor, _ := bar["centerAnchor"].(json.String)
+	cfg.center_anchor = strings.clone(anchor)
 	return true
 }
 
@@ -282,7 +287,7 @@ config_save :: proc(cfg: ^Config) {
 // Key order on save: known keys first, as in Omarchy's shell.json, then the
 // rest alphabetically.
 @(private = "file")
-KEY_ORDER := [?]string{"id", "bar", "position", "transparent", "layout", "left", "center", "right"}
+KEY_ORDER := [?]string{"id", "bar", "centerAnchor", "position", "transparent", "layout", "left", "center", "right"}
 
 @(private = "file")
 key_rank :: proc(k: string) -> int {

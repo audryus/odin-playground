@@ -1,0 +1,17 @@
+{
+  "schemaVersion": 1,
+  "id": "shellder.clock",
+  "name": "Clock",
+  "version": "1.0.0",
+  "author": "audryus",
+  "description": "Date/time label with a calendar popup",
+  "kinds": ["bar-widget"],
+  "entryPoints": {
+    "barWidget": ["python3", "-u", "clock.py"]
+  },
+  "barWidget": {
+    "displayName": "Clock",
+    "category": "Time",
+    "defaultSection": "center"
+  }
+}

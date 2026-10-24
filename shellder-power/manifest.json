@@ -1,0 +1,18 @@
+{
+  "schemaVersion": 1,
+  "id": "shellder.power",
+  "name": "Power",
+  "version": "1.0.0",
+  "author": "audryus",
+  "description": "Battery, power profile, and system stats",
+  "kinds": ["bar-widget"],
+  "entryPoints": {
+    "barWidget": ["python3", "-u", "power.py"]
+  },
+  "barWidget": {
+    "displayName": "Power",
+    "category": "System",
+    "defaultSection": "right",
+    "hover": "none"
+  }
+}

@@ -44,7 +44,10 @@ class Plugin:
         """ev: direction (up/down), monitor, bar, item, segment."""
 
     def on_hover(self, ev):
-        """ev: hovered (bool), monitor."""
+        """ev: hovered (bool), monitor, bar, item (the hovered zone)."""
+
+    def on_menu(self, ev):
+        """A right-click menu entry without "exec" was picked. ev: id, monitor."""
 
     # ---- state ------------------------------------------------------------
 
@@ -195,6 +198,8 @@ class Plugin:
             self.on_scroll(ev)
         elif kind == "hover":
             self.on_hover(ev)
+        elif kind == "menu":
+            self.on_menu(ev)
 
     def run(self):
         try:

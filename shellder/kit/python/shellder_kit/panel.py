@@ -247,6 +247,104 @@ def clear(box):
         child = nxt
 
 
+# ---- passive hover popup ----------------------------------------------------
+
+class HoverPopup:
+    """A popup that only shows something while the pointer is over a bar item
+    (manifest "hover": "event"): no input region, no keyboard, placed like
+    Shellder's tooltip — centered on the item, `gap` px from the bar.
+
+        class Big(P.HoverPopup):
+            def build(self, card): ...
+            def refresh(self): ...
+        def on_hover(self, ev):
+            self.big.show(ev) if ev["hovered"] else self.big.hide()
+    """
+
+    def __init__(self, plugin, namespace, gap=6, css=""):
+        self.plugin = plugin
+        self.namespace = namespace
+        self.gap = gap
+        self.css = css
+        self.window = None
+        self.card = None
+        self.shown = False
+
+    def build(self, card):
+        """Build the content into the card (vertical Gtk.Box). Once."""
+
+    def refresh(self):
+        """Update the content; called on show (and whenever needed)."""
+
+    def show(self, event):
+        if not import_gtk():
+            return
+        if self.window is None:
+            self._build()
+        apply_css(self.plugin.theme, self.css)
+        self.refresh()
+        self._place(event)
+        self.window.present()
+        self.shown = True
+
+    def hide(self):
+        if self.window is not None:
+            self.window.set_visible(False)
+        self.shown = False
+
+    def _build(self):
+        w = Gtk.Window()
+        w.add_css_class("sk-layer")
+        LayerShell.init_for_window(w)
+        LayerShell.set_namespace(w, self.namespace)
+        LayerShell.set_layer(w, LayerShell.Layer.OVERLAY)
+        LayerShell.set_keyboard_mode(w, LayerShell.KeyboardMode.NONE)
+
+        def no_input(win):
+            import cairo
+            win.get_surface().set_input_region(cairo.Region())
+        w.connect("realize", no_input)
+        card = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=8)
+        card.add_css_class("sk-panel")
+        w.set_child(card)
+        self.window, self.card = w, card
+        self.build(card)
+
+    def _place(self, event):
+        win, card = self.window, self.card
+        bar = event.get("bar", {})
+        item = event.get("item", {})
+        position = bar.get("position", "bottom")
+        monitors = Gdk.Display.get_default().get_monitors()
+        for i in range(monitors.get_n_items()):
+            m = monitors.get_item(i)
+            if m.get_connector() == event.get("monitor"):
+                LayerShell.set_monitor(win, m)
+        pw = card.measure(Gtk.Orientation.HORIZONTAL, -1)[1]
+        ph = card.measure(Gtk.Orientation.VERTICAL, pw)[1]
+        E = LayerShell.Edge
+        for edge in (E.TOP, E.BOTTOM, E.LEFT, E.RIGHT):
+            LayerShell.set_anchor(win, edge, False)
+            LayerShell.set_margin(win, edge, 0)
+
+        def clamp(v, lo, hi):
+            return max(lo, min(v, hi))
+        if position in ("bottom", "top"):
+            cx = item.get("x", 0) + item.get("width", 0) / 2
+            edge = E.BOTTOM if position == "bottom" else E.TOP
+            LayerShell.set_anchor(win, edge, True)
+            LayerShell.set_anchor(win, E.LEFT, True)
+            LayerShell.set_margin(win, edge, self.gap)
+            LayerShell.set_margin(win, E.LEFT, clamp(round(cx - pw / 2), 0, max(0, bar.get("width", pw) - pw)))
+        else:
+            cy = item.get("y", 0) + item.get("height", 0) / 2
+            edge = E.LEFT if position == "left" else E.RIGHT
+            LayerShell.set_anchor(win, edge, True)
+            LayerShell.set_anchor(win, E.TOP, True)
+            LayerShell.set_margin(win, edge, self.gap)
+            LayerShell.set_margin(win, E.TOP, clamp(round(cy - ph / 2), 0, max(0, bar.get("height", ph) - ph)))
+
+
 # ---- panel --------------------------------------------------------------------
 
 class Panel:

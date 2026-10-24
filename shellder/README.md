@@ -238,7 +238,7 @@ use these values to look like Omarchy.
  "bar":  {"position": "bottom", "width": 1920, "height": 26},
  "item": {"x": 900, "y": 2, "width": 120, "height": 22}}
 {"event": "scroll", "direction": "up", "monitor": "DP-1", "bar": {...}, "item": {...}}
-{"event": "hover", "hovered": true, "monitor": "DP-1"}
+{"event": "hover", "hovered": true, "monitor": "DP-1", "bar": {...}, "item": {...}}
 {"event": "menu", "id": "calendar", "monitor": "DP-1"}
 ```
 
@@ -248,7 +248,9 @@ use these values to look like Omarchy.
 - `bar`: position and size of the bar on that output; `item`: the item rect
   inside the bar (logical px, from the bar's top-left corner) — what a plugin
   needs to open a popup next to the bar, aligned with the item.
-- `hover`: the pointer entered (`true`) or left (`false`) the item on that bar.
+- `hover`: the pointer entered (`true`) or left (`false`) the item on that bar;
+  `item` is the hovered zone's rect, to place a hover popup. While the
+  plugin's right-click menu is open it gets `hovered: false`.
 
 Reading stdin is optional: if the plugin does not read and the pipe fills up,
 lines are dropped (a plugin never freezes the bar).
@@ -305,6 +307,9 @@ Mine().run()
   `run_detached()`, `watch_lines()` (long-running process, line by line).
 - `panel.Panel`: the popup pattern below, ready to use — override `build()`
   and `refresh()`.
+- `panel.HoverPopup`: a passive card (no input, no keyboard) placed like the
+  tooltip, for `"hover": "event"` plugins — `show(hover_event)` / `hide()`.
+- `on_menu(ev)` receives right-click menu entries without `exec`.
 - Widgets with the look of the Omarchy components: `hero`, `section`,
   `separator`, `row`, `action_button`, `button`, `switch`, `slider`.
 

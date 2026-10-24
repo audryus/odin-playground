@@ -355,15 +355,20 @@ view_plugin :: proc(app: ^App, p: ^Plugin, bar: ^Bar, ctx: ^skald.Ctx(Msg)) -> (
 
 	// "hover" to the plugin when the pointer enters/leaves the item on this bar
 	// (Omarchy's indicators reveal the inactive ones this way).
+	// While the plugin's right-click menu is open its hover popup must go away.
+	if app.menu != nil && app.menu.plugin == p { any_hover = false }
 	if p.hover_mode != .None && p.hovered_on[bar.name] != any_hover {
 		if _, had := p.hovered_on[bar.name]; !had {
 			p.hovered_on[strings.clone(bar.name)] = any_hover
 		} else {
 			p.hovered_on[bar.name] = any_hover
 		}
+		// The hovered zone's rect, so the plugin can place a hover popup.
+		hover_rect: skald.Rect
+		if any_hover && app.hover_now.plugin == p { hover_rect = app.hover_now.rect }
 		skald.send(ctx, Plugin_Input{plugin = p, ev = Plugin_Event{
 			kind = .Hover, dir = any_hover ? 1 : 0, monitor = bar.name,
-			bar_size = bar.win.size_logical,
+			item = hover_rect, bar_size = bar.win.size_logical,
 		}})
 	}
 

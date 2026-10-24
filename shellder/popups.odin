@@ -233,6 +233,7 @@ menu_open :: proc(app: ^App, bar_out: i32, plugin: ^Plugin, rect: skald.Rect) {
 		})
 	}
 	app.menu = p
+	mark_all_dirty(app) // redraw the bar so the plugin gets hovered=false
 }
 
 // menu_place sizes the card and places it next to the bar, centered on the item.

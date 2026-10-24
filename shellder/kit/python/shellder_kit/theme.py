@@ -98,6 +98,7 @@ class Theme:
             "sbw": self.selected_border_width, "selected_color": css(self.selected_color),
             "pressed": css(self.pressed_fill),
             "hairline": css(with_alpha(fg, 0.12)), "track": css(self.selected_fill),
+            "hairline10": css(with_alpha(fg, 0.1)), "dim145": css(darker(fg, 1.45)),
             "dim12": css(darker(fg, 1.25)), "dim14": css(darker(fg, 1.4)),
             "dim15": css(darker(fg, 1.5)), "dim19": css(darker(fg, 1.9)),
             "dim20": css(darker(fg, 2.0)), "dim22": css(darker(fg, 2.2)),

@@ -1,0 +1,28 @@
+diff --git i/skald/shaders/ui.frag w/skald/shaders/ui.frag
+index 1e8f062..3594585 100644
+--- i/skald/shaders/ui.frag
++++ w/skald/shaders/ui.frag
+@@ -39,14 +39,15 @@ void main() {
+     }
+     if (v_kind < 1.5) {
+         float a = texture(atlas, v_uv).r;
+-        // Stem-darken glyph coverage. The fontstash atlas is rasterised
+-        // with perceptual (sRGB) coverage in mind but we blend in linear
+-        // space (SRGB framebuffer → hw linear blend), which over-thins
+-        // dark-on-light text. Raising coverage by a gamma curve (~1/1.55)
+-        // thickens strokes so light-theme text doesn't read fuzzy.
+-        // The dark theme tolerates the same curve because bright-on-dark
+-        // strokes pick up only ~1 % extra weight for any given coverage.
+-        a = pow(a, 1.0 / 1.55);
++        // Shellder: blend glyph coverage the way Qt does (sRGB-space
++        // blending), so bar text matches the Omarchy/Quickshell bar instead
++        // of looking bolder/brighter. The framebuffer blends in linear
++        // space, so remap coverage: for light text on a dark background
++        // lin(a*fg + (1-a)*bg) ~= a^2.2 of the way; for dark text on a light
++        // background the mirror curve. Replaces upstream's stem darkening
++        // (pow(a, 1/1.55)), which thickens bright-on-dark text further.
++        float luma = dot(v_color.rgb, vec3(0.2126, 0.7152, 0.0722)); // linear
++        a = luma > 0.214 ? pow(a, 2.2) : 1.0 - pow(1.0 - a, 2.2);  // 0.214 = lin(0.5)
+         out_color = vec4(v_color.rgb, v_color.a * a);
+         return;
+     }

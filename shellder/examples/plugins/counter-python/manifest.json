@@ -1,0 +1,16 @@
+{
+  "schemaVersion": 1,
+  "id": "example.counter",
+  "name": "Counter",
+  "version": "1.0.0",
+  "author": "shellder",
+  "description": "Exemplo em Python: clique esquerdo soma, direito subtrai, scroll muda, meio zera.",
+  "kinds": ["bar-widget"],
+  "entryPoints": {
+    "barWidget": ["python3", "-u", "main.py"]
+  },
+  "barWidget": {
+    "icon": "",
+    "defaultSection": "right"
+  }
+}

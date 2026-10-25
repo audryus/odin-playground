@@ -8,14 +8,16 @@ GTK4 + gtk4-layer-shell:
   - keyboard EXCLUSIVE for 75 ms to take focus, then ON_DEMAND (permanent
     EXCLUSIVE makes Hyprland route all pointer input to the layer, so the
     closing clicks on the other outputs never arrive);
-  - never closes on focus loss (focus changes on the way to the card).
+  - never closes on focus loss (focus changes on the way to the card);
+  - destroyed when closed (a hidden window keeps its buffers) and rendered
+    with cairo, without GL/Vulkan, so a closed panel costs no VRAM.
 
 Usage:
 
     from shellder_kit import panel as P
 
     class MyPanel(P.Panel):
-        def build(self, card):      # build the content (once)
+        def build(self, card):      # build the content (on every open)
             card.append(P.section("Devices"))
         def refresh(self):          # update on every open / whenever needed
             ...
@@ -25,6 +27,7 @@ Usage:
 """
 
 import json
+import os
 import subprocess
 import sys
 
@@ -39,6 +42,11 @@ def import_gtk():
     global Gtk, Gdk, GdkPixbuf, GLib, LayerShell
     if Gtk is not None:
         return True
+    # Cairo (software) rendering and no GL/Vulkan: every plugin is its own
+    # process, and a GPU renderer per process costs ~190 MiB of VRAM for a
+    # few small cards. Overridable from the environment.
+    os.environ.setdefault("GSK_RENDERER", "cairo")
+    os.environ.setdefault("GDK_DISABLE", "gl,vulkan")
     try:
         from ctypes import CDLL
         CDLL("libgtk4-layer-shell.so")
@@ -272,7 +280,8 @@ class HoverPopup:
         self.shown = False
 
     def build(self, card):
-        """Build the content into the card (vertical Gtk.Box). Once."""
+        """Build the content into the card (vertical Gtk.Box). Called on
+        every open/show: the windows are destroyed when closed."""
 
     def refresh(self):
         """Update the content; called on show (and whenever needed)."""
@@ -289,8 +298,10 @@ class HoverPopup:
         self.shown = True
 
     def hide(self):
+        # Destroyed, not hidden: a hidden window keeps its buffers.
         if self.window is not None:
-            self.window.set_visible(False)
+            self.window.destroy()
+            self.window = self.card = None
         self.shown = False
 
     def _build(self):
@@ -366,7 +377,8 @@ class Panel:
     # ---- override ---------------------------------------------------------
 
     def build(self, card):
-        """Build the content into the card (vertical Gtk.Box). Once."""
+        """Build the content into the card (vertical Gtk.Box). Called on
+        every open/show: the windows are destroyed when closed."""
 
     def refresh(self):
         """Update the content. Called on every open."""
@@ -408,13 +420,17 @@ class Panel:
         self.on_open()
 
     def close(self):
-        if self.window is not None:
-            self.window.set_visible(False)
-        for c in self.catchers.values():
-            c.set_visible(False)
+        """Close and destroy the windows: hidden ones would keep their
+        buffers (the panel layer covers the output). open() builds again."""
         if self.opened:
             self.opened = False
             self.on_close()
+        for c in self.catchers.values():
+            c.destroy()
+        self.catchers = {}
+        if self.window is not None:
+            self.window.destroy()
+            self.window = self.card = None
 
     def theme_changed(self):
         if self.window is not None:
@@ -423,7 +439,7 @@ class Panel:
     # ---- internals ----------------------------------------------------------
 
     def _prime_done(self):
-        if self.opened:
+        if self.opened and self.window is not None:
             LayerShell.set_keyboard_mode(self.window, LayerShell.KeyboardMode.ON_DEMAND)
         return False
 

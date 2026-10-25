@@ -229,7 +229,7 @@ class TrayMenu(P.Panel):
         self.entries = rows
         if first and not self.opened:
             self.open(event)
-        else:
+        elif self.opened:
             self.refresh()
             self._place(self.event)
         self.scroll.get_vadjustment().set_value(0)

@@ -44,7 +44,6 @@ panel_proc_start :: proc(app: ^App, p: ^Plugin, ev: Plugin_Event) {
 		fmt.ctprintf("SHELLDER_PLUGIN_ID=%s", p.id),
 		fmt.ctprintf("SHELLDER_PLUGIN_DIR=%s", p.dir),
 		fmt.ctprintf("SHELLDER_CONFIG_DIR=%s", app.cfg.dir),
-		fmt.ctprintf("SHELLDER_KIT=%s", kit_dir()),
 		"SHELLDER_PANEL=1",
 		nil,
 	}

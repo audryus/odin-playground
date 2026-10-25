@@ -2,7 +2,7 @@ SKALD_REPO := https://github.com/BuLEEto/Skald.git
 SKALD_DIR  := vendor/Skald
 CONFIG_DIR ?= $(or $(XDG_CONFIG_HOME),$(HOME)/.config)/shellder
 
-.PHONY: all deps update build run install-examples clean
+.PHONY: all deps update build run clean
 
 all: build
 
@@ -22,11 +22,6 @@ build: deps
 
 run: deps
 	./build.sh run
-
-# Copy the example plugins into the plugins folder (no overwrite).
-install-examples:
-	mkdir -p $(CONFIG_DIR)/plugins
-	cp -rn examples/plugins/* $(CONFIG_DIR)/plugins/
 
 clean:
 	rm -rf build

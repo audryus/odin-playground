@@ -13,7 +13,6 @@ plugins written in any language.
 
 ```bash
 make run                # first time clones Skald into vendor/, builds and runs
-make install-examples   # copies the example plugins into ~/.config/shellder/plugins
 pkill shellder          # quits (plugins are stopped with it)
 ```
 
@@ -170,7 +169,6 @@ The process runs with the plugin folder as `cwd` and gets these variables:
 | `SHELLDER_PLUGIN_ID`  | the manifest `id` |
 | `SHELLDER_PLUGIN_DIR` | the plugin folder |
 | `SHELLDER_CONFIG_DIR` | Shellder's config folder |
-| `SHELLDER_KIT`        | Shellder's plugin kit folder (see below) |
 | `SHELLDER_PANEL`      | `1` in the `entryPoints.panel` program only |
 
 The plugin's stderr goes to Shellder's stderr.
@@ -296,12 +294,14 @@ in any language:
 
 ### Python plugin kit
 
-Shellder exports `SHELLDER_KIT` (the `kit/` folder next to the binary). In
-Python:
+The kit lives with the plugins, in
+`shellder-plugins` (a separate folder, next to this repository) (`kit/python/shellder_kit`);
+Shellder itself does not know about it. A plugin there finds it at `../kit`
+(or at `$SHELLDER_KIT`, if set). In Python:
 
 ```python
 import os, sys
-sys.path.insert(0, os.path.join(os.environ["SHELLDER_KIT"], "python"))
+sys.path.insert(0, os.path.join(os.path.dirname(os.path.realpath(__file__)), "..", "kit", "python"))
 from shellder_kit import Plugin
 from shellder_kit import panel as P   # only if the plugin has a popup (GTK4)
 
@@ -457,29 +457,30 @@ only while the panel is open.
 
 ### Examples
 
-Ports of every Omarchy bar widget (each folder has its own README):
+Ports of every Omarchy bar widget, in
+`shellder-plugins` (a separate folder, next to this repository) (each folder has its own README):
 
 | Plugin | Omarchy widget | Shows |
 |---|---|---|
-| [`shellder-workspace`](../shellder-workspace) | omarchy.workspaces | workspaces per output (standard library only; `monitor`, `segments`) |
-| [`shellder-indicators`](../shellder-indicators) | omarchy.indicators | status indicators, revealed on hover (`segments`, `hover`) |
-| [`shellder-clock`](../shellder-clock) | omarchy.clock | clock, big-time hover, calendar panel, right-click `menu` |
-| [`shellder-keyboard-layout`](../shellder-keyboard-layout) | omarchy.keyboard-layout | xkb layout code (only with several layouts) |
-| [`shellder-weather`](../shellder-weather) | omarchy.weather | condition glyph, forecast panel, location search |
-| [`shellder-system-update`](../shellder-system-update) | omarchy.system-update | pending Omarchy update glyph |
-| [`shellder-tray`](../shellder-tray) | omarchy.tray | StatusNotifierItem tray, drawer, dbusmenu (`image`, `passive`) |
-| [`shellder-agents`](../shellder-agents) | omarchy.agents | AI subscription limits and token usage |
-| [`shellder-bluetooth`](../shellder-bluetooth) | omarchy.bluetooth | adapter, devices, discovery |
-| [`shellder-network`](../shellder-network) | omarchy.network | status glyph, details, DNS, Wi-Fi |
-| [`shellder-audio`](../shellder-audio) | omarchy.audio | volume glyph, devices and streams |
-| [`shellder-monitor`](../shellder-monitor) | omarchy.monitor | brightness, text size, scale, outputs |
-| [`shellder-power`](../shellder-power) | omarchy.power | battery (hidden without one), power profiles |
+| `shellder-workspace` | omarchy.workspaces | workspaces per output (standard library only; `monitor`, `segments`) |
+| `shellder-indicators` | omarchy.indicators | status indicators, revealed on hover (`segments`, `hover`) |
+| `shellder-clock` | omarchy.clock | clock, big-time hover, calendar panel, right-click `menu` |
+| `shellder-keyboard-layout` | omarchy.keyboard-layout | xkb layout code (only with several layouts) |
+| `shellder-weather` | omarchy.weather | condition glyph, forecast panel, location search |
+| `shellder-system-update` | omarchy.system-update | pending Omarchy update glyph |
+| `shellder-tray` | omarchy.tray | StatusNotifierItem tray, drawer, dbusmenu (`image`, `passive`) |
+| `shellder-agents` | omarchy.agents | AI subscription limits and token usage |
+| `shellder-bluetooth` | omarchy.bluetooth | adapter, devices, discovery |
+| `shellder-network` | omarchy.network | status glyph, details, DNS, Wi-Fi |
+| `shellder-audio` | omarchy.audio | volume glyph, devices and streams |
+| `shellder-monitor` | omarchy.monitor | brightness, text size, scale, outputs |
+| `shellder-power` | omarchy.power | battery (hidden without one), power profiles |
 
 Small examples:
 
-- `examples/plugins/counter-python/` — interactive: clicks and scroll change a
+- `shellder-plugins/examples/counter-python/` — interactive: clicks and scroll change a
   counter (JSON both ways).
-- `examples/plugins/loadavg-bash/` — just `echo` every 5 seconds.
+- `shellder-plugins/examples/loadavg-bash/` — just `echo` every 5 seconds.
 
 Minimal shell plugin:
 
@@ -498,7 +499,6 @@ omarchy.odin   Omarchy theme (palette, shell.toml, font, Hyprland)
 config.odin    shell.json (read, layout, settings, save)
 native.odin    bindings for the C code
 native/        C: Wayland layer-shell (wlbar.c) and processes (proc.c)
-kit/           plugin kit (kit/python/shellder_kit)
 ```
 
 `skald.run` uses SDL, which cannot create layer surfaces, so Shellder uses

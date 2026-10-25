@@ -19,7 +19,7 @@ import os
 import sys
 
 sys.path.insert(0, os.path.join(os.environ.get("SHELLDER_KIT", ""), "python"))
-from gi.repository import GLib  # noqa: E402
+from shellder_kit import loop  # noqa: E402
 
 from shellder_kit import Plugin  # noqa: E402
 from shellder_kit import panel as P  # noqa: E402
@@ -91,11 +91,11 @@ class DisplayPanel(P.Panel):
 
     def on_open(self):
         self.plugin.refresh()
-        self.timer = GLib.timeout_add(5000, lambda: self.plugin.refresh() or True)
+        self.timer = loop.timeout_add(5000, lambda: self.plugin.refresh() or True)
 
     def on_close(self):
         if self.timer:
-            GLib.source_remove(self.timer)
+            loop.source_remove(self.timer)
             self.timer = None
 
     # ---- actions ------------------------------------------------------------
@@ -106,8 +106,8 @@ class DisplayPanel(P.Panel):
         self.update_hero()
         # Debounced like the original (180 ms) while dragging.
         if self.debounce:
-            GLib.source_remove(self.debounce)
-        self.debounce = GLib.timeout_add(180, self._apply_brightness)
+            loop.source_remove(self.debounce)
+        self.debounce = loop.timeout_add(180, self._apply_brightness)
 
     def _apply_brightness(self):
         self.debounce = None

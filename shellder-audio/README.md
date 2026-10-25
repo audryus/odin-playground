@@ -15,9 +15,9 @@ manifest picks who draws it:
 
 | `"panel"` | Drawn by | RAM (PSS) |
 |---|---|---|
-| `"skald"` (as shipped) | Shellder | plugin ~16 MiB, open or closed |
-| `"process"` | a GTK child that lives only while the panel is open | plugin ~16 MiB, +35 MiB while open |
-| `"plugin"` | GTK in the plugin | ~16 MiB until first open, then ~33–36 MiB |
+| `"skald"` (as shipped) | Shellder | plugin ~7 MiB, open or closed |
+| `"process"` | a GTK child that lives only while the panel is open | plugin ~7 MiB, +35 MiB while open |
+| `"plugin"` | GTK in the plugin | ~7 MiB until first open, then ~33–36 MiB |
 
 It closes on a click outside it, on another bar item or with `Esc`. The panel
 takes no other keys, so the old GTK version's `←`/`→`/`m`

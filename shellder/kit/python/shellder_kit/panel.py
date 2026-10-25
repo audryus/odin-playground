@@ -37,7 +37,7 @@ _css_theme = None
 
 
 def import_gtk():
-    """Load GTK4 + layer-shell. libgtk4-layer-shell must be loaded before
+    """Load GTK4 + layer-shell (the kit's loop then moves onto GLib). libgtk4-layer-shell must be loaded before
     libwayland-client, hence the CDLL before importing Gtk."""
     global Gtk, Gdk, GdkPixbuf, GLib, LayerShell
     if Gtk is not None:

@@ -23,7 +23,7 @@ import os
 import sys
 
 sys.path.insert(0, os.path.join(os.environ.get("SHELLDER_KIT", ""), "python"))
-from gi.repository import GLib  # noqa: E402
+from shellder_kit import loop  # noqa: E402
 
 from shellder_kit import Plugin  # noqa: E402
 from shellder_kit import nodes as N  # noqa: E402
@@ -119,7 +119,7 @@ class Audio(Plugin):
         # A burst of events (moving a slider emits many) becomes one reload.
         if "sink" in line or "source" in line or "server" in line:
             if self.pending is None:
-                self.pending = GLib.timeout_add(75, self._reload_pending)
+                self.pending = loop.timeout_add(75, self._reload_pending)
 
     def on_subscribe_exit(self):
         self.later(2, lambda: self.watch_lines(["pactl", "subscribe"], self.on_event, self.on_subscribe_exit))

@@ -314,8 +314,15 @@ Mine().run()
 
 - `Plugin`: the protocol loop; `self.theme`, `self.bar`, `self.settings`;
   `emit()` (does not repeat identical lines; `monitor=` for a single bar),
-  `save_settings()`, `every()`, `later()`, `run_cmd()` (async),
-  `run_detached()`, `watch_lines()` (long-running process, line by line).
+  `save_settings()`, `every()`, `later()`, `run_cmd()` (async; returns a
+  `Proc` with `force_exit()`), `run_detached()`, `watch_lines()`
+  (long-running process, line by line).
+- `loop`: the main loop, **standard library only** — the kit imports no gi,
+  so a bar-only plugin costs ~6 MiB instead of ~16 MiB with PyGObject/GLib.
+  Same API as GLib's (`loop.timeout_add`, `timeout_add_seconds`, `idle_add`,
+  `io_add_watch`, `source_remove`, `IO_IN`...): use it instead of `GLib.`.
+  When the plugin imports gi's GLib (a GTK panel, Gio for D-Bus) the loop
+  moves everything onto a GLib main loop by itself, ids included.
 - `panel.Panel`: the popup pattern below, ready to use — override `build()`
   and `refresh()`.
 - `panel.HoverPopup`: a passive card (no input, no keyboard) placed like the
@@ -328,7 +335,7 @@ Mine().run()
 
 With `"panel": "skald"` in the manifest the plugin only describes its panel
 and Shellder draws it with the Omarchy theme, so the plugin needs no GUI
-toolkit (shellder-audio uses it: ~16 MiB instead of ~30 MiB with GTK).
+toolkit (shellder-audio uses it: ~7 MiB instead of ~30 MiB with GTK).
 
 ```json
 {"panel": {"width": 380, "spacing": 14, "items": [
@@ -380,9 +387,9 @@ does not change, only the manifest. Both draw the nodes with GTK4
 
 | Mode | Where GTK runs | Measured with shellder-audio (PSS) |
 |---|---|---|
-| `"skald"` | nowhere: Shellder draws it | plugin 15.6 MiB, open or closed |
-| `"process"` | `python3 -m shellder_kit.panel_process`, started on open and exiting on close | plugin 15.6 MiB; +35 MiB child only while open; opens ~135 ms later than `"skald"` |
-| `"plugin"` | the plugin's process | 15.6 MiB until the first open, 36 MiB open, 32.5 MiB after closing (GTK stays loaded) |
+| `"skald"` | nowhere: Shellder draws it | plugin 7.3 MiB, open or closed |
+| `"process"` | `python3 -m shellder_kit.panel_process`, started on open and exiting on close | plugin 7.3 MiB; +35 MiB child only while open; opens ~135 ms later than `"skald"` |
+| `"plugin"` | the plugin's process | 7.3 MiB until the first open, ~36 MiB open, ~33 MiB after closing (GTK stays loaded) |
 
 The child speaks JSON lines over its stdin/stdout: `{"open": {"event",
 "theme", "spec"}}`, then `{"spec": ...}` / `{"theme": ...}` updates and
@@ -436,7 +443,7 @@ exists only while it is on screen, and the bar process loads no toolkit:
 
 `shellder_kit.PanelApp` is that program in Python: set `self.panel` (a
 `panel.Panel`) in `on_start`; it opens on the click and the process exits
-when it closes. shellder-network uses it: 14.8 MiB for the bar, plus ~39 MiB
+when it closes. shellder-network uses it: 6 MiB for the bar, plus ~39 MiB
 only while the panel is open.
 
 ### Lifecycle

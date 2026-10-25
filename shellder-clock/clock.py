@@ -20,7 +20,7 @@ import shutil
 import sys
 
 sys.path.insert(0, os.path.join(os.environ.get("SHELLDER_KIT", ""), "python"))
-from shellder_kit import Plugin  # noqa: E402
+from shellder_kit import Plugin, loop  # noqa: E402
 from shellder_kit import panel as P  # noqa: E402
 
 import model as M  # noqa: E402
@@ -57,12 +57,12 @@ class BigClock(P.HoverPopup):
     def show(self, event):
         super().show(event)
         if self.timer is None:
-            self.timer = P.GLib.timeout_add(250, self._tick)
+            self.timer = loop.timeout_add(250, self._tick)
 
     def hide(self):
         super().hide()
         if self.timer is not None:
-            P.GLib.source_remove(self.timer)
+            loop.source_remove(self.timer)
             self.timer = None
 
     def _tick(self):

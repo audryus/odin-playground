@@ -6,9 +6,60 @@ import shlex
 import subprocess
 import sys
 
-from gi.repository import Gio, GLib
-
+from . import loop
 from .theme import Theme
+
+
+class Proc:
+    """A command started by run_cmd / watch_lines."""
+
+    def __init__(self, popen):
+        self.popen = popen
+
+    @property
+    def pid(self):
+        return self.popen.pid
+
+    def force_exit(self):
+        try:
+            self.popen.kill()
+        except OSError:
+            pass
+
+
+def _read_pipe(pipe, on_data, on_eof):
+    """Feed a non-blocking pipe's bytes to on_data(bytes), then on_eof()."""
+    fd = pipe.fileno()
+    os.set_blocking(fd, False)
+
+    def readable(_fd, cond):
+        try:
+            chunk = os.read(fd, 65536)
+        except BlockingIOError:
+            return True
+        except OSError:
+            chunk = b""
+        if chunk:
+            on_data(chunk)
+            return True
+        pipe.close()
+        on_eof()
+        return False
+    loop.io_add_watch(fd, loop.IO_IN | loop.IO_HUP | loop.IO_ERR, readable)
+
+
+def _when_exited(popen, done):
+    """done(returncode) once popen exits, without blocking the loop."""
+    if popen.poll() is not None:
+        done(popen.returncode)
+        return
+
+    def check():
+        if popen.poll() is None:
+            return True
+        done(popen.returncode)
+        return False
+    loop.timeout_add(20, check)
 
 
 class Plugin:
@@ -25,7 +76,7 @@ class Plugin:
         self.theme = Theme(None)
         self.bar = {"position": "bottom", "size": 26}
         self.settings = {}
-        self.loop = GLib.MainLoop()
+        self.loop = loop  # .quit() ends run()
         self._buf = b""
         self._last = {}
         self._configured = False
@@ -98,39 +149,50 @@ class Plugin:
     # ---- timers and processes -----------------------------------------------
 
     def every(self, seconds, fn, now=False):
-        """Call fn() every `seconds` (fn returning False stops it)."""
+        """Call fn() every `seconds` (fn returning False stops it). Returns
+        an id for loop.source_remove."""
         def tick():
             return fn() is not False
         if now:
-            GLib.idle_add(lambda: fn() and False)
-        return GLib.timeout_add(int(seconds * 1000), tick)
+            loop.idle_add(lambda: fn() and False)
+        return loop.timeout_add(int(seconds * 1000), tick)
 
     def later(self, seconds, fn):
-        return GLib.timeout_add(int(seconds * 1000), lambda: fn() and False)
+        return loop.timeout_add(int(seconds * 1000), lambda: fn() and False)
 
     def run_cmd(self, argv, callback=None, stdin=None):
-        """Run argv without blocking; callback(ok, stdout, stderr)."""
+        """Run argv without blocking; callback(ok, stdout, stderr). Returns a
+        Proc (force_exit()) or None if it could not start."""
         if isinstance(argv, str):
             argv = ["sh", "-c", argv]
-        flags = Gio.SubprocessFlags.STDOUT_PIPE | Gio.SubprocessFlags.STDERR_PIPE
-        if stdin is not None:
-            flags |= Gio.SubprocessFlags.STDIN_PIPE
         try:
-            proc = Gio.Subprocess.new(argv, flags)
-        except GLib.Error as e:
+            popen = subprocess.Popen(argv, stdin=subprocess.PIPE if stdin is not None else subprocess.DEVNULL,
+                                     stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+        except OSError as e:
             if callback:
-                callback(False, "", str(e))
+                msg = str(e)
+                loop.idle_add(lambda: callback(False, "", msg) and False)
             return None
-
-        def done(p, res):
+        if stdin is not None:
             try:
-                _, out, err = p.communicate_utf8_finish(res)
-            except GLib.Error as e:
-                out, err = "", str(e)
+                popen.stdin.write(stdin.encode())
+                popen.stdin.close()
+            except OSError:
+                pass
+        out, err, open_pipes = [], [], [2]
+
+        def eof():
+            open_pipes[0] -= 1
+            if open_pipes[0] == 0:
+                _when_exited(popen, finished)
+
+        def finished(code):
             if callback:
-                callback(p.get_successful(), out or "", err or "")
-        proc.communicate_utf8_async(stdin, None, done)
-        return proc
+                callback(code == 0, b"".join(out).decode("utf-8", "replace"),
+                         b"".join(err).decode("utf-8", "replace"))
+        _read_pipe(popen.stdout, out.append, eof)
+        _read_pipe(popen.stderr, err.append, eof)
+        return Proc(popen)
 
     def run_detached(self, argv):
         """Fire and forget (apps, Omarchy menus)."""
@@ -142,30 +204,33 @@ class Plugin:
         except OSError as e:
             print("%s: could not run %s: %s" % (self.name(), argv, e), file=sys.stderr)
 
-    def watch_lines(self, argv, on_line, on_exit=None):
-        """Long-running process; on_line(str) for each stdout line."""
+    def watch_lines(self, argv, on_line, on_exit=None, stdin=False, env=None):
+        """Long-running process; on_line(str) for each stdout line (without
+        the newline), on_exit() after it ends. stdin=True keeps a pipe to it
+        (proc.popen.stdin); env replaces the environment."""
         try:
-            proc = Gio.Subprocess.new(argv, Gio.SubprocessFlags.STDOUT_PIPE)
-        except GLib.Error as e:
+            popen = subprocess.Popen(argv, stdin=subprocess.PIPE if stdin else subprocess.DEVNULL,
+                                     stdout=subprocess.PIPE, env=env)
+        except OSError as e:
             print("%s: %s" % (self.name(), e), file=sys.stderr)
             if on_exit:
-                on_exit()
+                loop.idle_add(lambda: on_exit() and False)
             return None
-        stream = Gio.DataInputStream.new(proc.get_stdout_pipe())
+        buf = [b""]
 
-        def read(s, res):
-            try:
-                line, _ = s.read_line_finish_utf8(res)
-            except GLib.Error:
-                line = None
-            if line is None:
-                if on_exit:
-                    on_exit()
-                return
-            on_line(line)
-            s.read_line_async(GLib.PRIORITY_DEFAULT, None, read)
-        stream.read_line_async(GLib.PRIORITY_DEFAULT, None, read)
-        return proc
+        def data(chunk):
+            buf[0] += chunk
+            while b"\n" in buf[0]:
+                line, buf[0] = buf[0].split(b"\n", 1)
+                on_line(line.decode("utf-8", "replace"))
+
+        def eof():
+            if buf[0]:
+                on_line(buf[0].decode("utf-8", "replace"))
+                buf[0] = b""
+            _when_exited(popen, lambda code: on_exit and on_exit())
+        _read_pipe(popen.stdout, data, eof)
+        return Proc(popen)
 
     def name(self):
         return os.environ.get("SHELLDER_PLUGIN_ID", type(self).__name__)
@@ -220,12 +285,12 @@ class Plugin:
     def run(self):
         try:
             os.set_blocking(0, False)
-            GLib.io_add_watch(0, GLib.IO_IN | GLib.IO_HUP, self._on_stdin)
+            loop.io_add_watch(0, loop.IO_IN | loop.IO_HUP, self._on_stdin)
         except OSError:
             pass  # stdin is not a pipe (run by hand)
         self.on_start()
         try:
-            self.loop.run()
+            loop.run()
         except KeyboardInterrupt:
             pass
 

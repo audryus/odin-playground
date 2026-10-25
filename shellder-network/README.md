@@ -16,7 +16,7 @@ to [Shellder](../shellder).
   overlays through `omarchy-shell`. Keys: `r` refresh, `w` Wi-Fi on/off.
 
 Two processes: `network.py` keeps the bar icon and loads no GUI toolkit
-(~15 MiB); `panel.py` is the panel (`entryPoints.panel`, `barWidget.panel:
+(~6 MiB); `panel.py` is the panel (`entryPoints.panel`, `barWidget.panel:
 "process"`), which Shellder starts on the click and ends when the panel is
 dismissed, and which exits on `Esc` or a click outside — GTK's ~39 MiB exist
 only while the panel is on screen. Before, the panel lived in the bar process

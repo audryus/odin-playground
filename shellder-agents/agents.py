@@ -26,7 +26,7 @@ import os
 import sys
 
 sys.path.insert(0, os.path.join(os.environ.get("SHELLDER_KIT", ""), "python"))
-from gi.repository import GLib  # noqa: E402
+from shellder_kit import loop  # noqa: E402
 
 from shellder_kit import Plugin  # noqa: E402
 from shellder_kit import panel as P  # noqa: E402
@@ -97,11 +97,11 @@ class AgentsPanel(P.Panel):
         card.append(self.body)
 
     def on_open(self):
-        self.timer = GLib.timeout_add(30000, lambda: self.refresh() or True)
+        self.timer = loop.timeout_add(30000, lambda: self.refresh() or True)
 
     def on_close(self):
         if self.timer:
-            GLib.source_remove(self.timer)
+            loop.source_remove(self.timer)
             self.timer = None
 
     def on_key(self, keyval, ch):
@@ -280,12 +280,12 @@ class Agents(Plugin):
     def update_records(self):
         self.run_cmd(["omarchy-agent-usage-update"], lambda *_: self.load())
         if self.update_timer:
-            GLib.source_remove(self.update_timer)
+            loop.source_remove(self.update_timer)
         try:
             interval = max(60, int(self.setting("refreshIntervalSec", 900)))
         except (TypeError, ValueError):
             interval = 900
-        self.update_timer = GLib.timeout_add_seconds(interval, lambda: self.update_records() and False)
+        self.update_timer = loop.timeout_add_seconds(interval, lambda: self.update_records() and False)
 
     def enabled(self, pid):
         providers = self.setting("providers", {}) or {}

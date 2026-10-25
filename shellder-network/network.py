@@ -15,7 +15,7 @@ import os
 import sys
 
 sys.path.insert(0, os.path.join(os.environ.get("SHELLDER_KIT", ""), "python"))
-from gi.repository import GLib  # noqa: E402
+from shellder_kit import loop  # noqa: E402
 
 from shellder_kit import Plugin  # noqa: E402
 
@@ -31,7 +31,7 @@ class Network(Plugin):
 
     def on_nm_event(self, line):
         if self.pending is None:
-            self.pending = GLib.timeout_add(300, self._pending_refresh)
+            self.pending = loop.timeout_add(300, self._pending_refresh)
 
     def on_monitor_exit(self):
         self.later(3, lambda: self.watch_lines(["nmcli", "monitor"], self.on_nm_event, self.on_monitor_exit))

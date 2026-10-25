@@ -26,7 +26,7 @@ import sys
 import time
 
 sys.path.insert(0, os.path.join(os.environ.get("SHELLDER_KIT", ""), "python"))
-from gi.repository import GLib  # noqa: E402
+from shellder_kit import loop  # noqa: E402
 
 from shellder_kit import PanelApp  # noqa: E402
 from shellder_kit import panel as P  # noqa: E402
@@ -121,13 +121,13 @@ class NetworkPanel(P.Panel):
         pl.poll_band()
         pl.poll_dns()
         pl.scan_wifi()
-        self.timers = [GLib.timeout_add(1500, lambda: pl.poll_details() or True),
-                       GLib.timeout_add(4000, lambda: pl.poll_band() or True),
-                       GLib.timeout_add(2800, self._phrase_tick)]
+        self.timers = [loop.timeout_add(1500, lambda: pl.poll_details() or True),
+                       loop.timeout_add(4000, lambda: pl.poll_band() or True),
+                       loop.timeout_add(2800, self._phrase_tick)]
 
     def on_close(self):
         for t in self.timers:
-            GLib.source_remove(t)
+            loop.source_remove(t)
         self.timers = []
         self.password_ssid = ""
 
@@ -248,7 +248,7 @@ class NetworkPanel(P.Panel):
                 box.append(entry)
                 box.append(P.button("Join", lambda e=entry, n=net: self.submit_password(n, e.get_text())))
                 self.wifi_box.append(box)
-                GLib.idle_add(lambda e=entry: e.grab_focus() and False)
+                loop.idle_add(lambda e=entry: e.grab_focus() and False)
 
     def activate(self, net):
         pl = self.plugin
@@ -287,7 +287,7 @@ class NetworkPanelApp(PanelApp):
 
     def on_nm_event(self, line):
         if self.pending is None:
-            self.pending = GLib.timeout_add(300, self._pending_refresh)
+            self.pending = loop.timeout_add(300, self._pending_refresh)
 
     def on_monitor_exit(self):
         self.later(3, lambda: self.watch_lines(["nmcli", "monitor"], self.on_nm_event, self.on_monitor_exit))

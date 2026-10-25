@@ -26,7 +26,7 @@ import sys
 import urllib.parse
 
 sys.path.insert(0, os.path.join(os.environ.get("SHELLDER_KIT", ""), "python"))
-from gi.repository import GLib  # noqa: E402
+from shellder_kit import loop  # noqa: E402
 
 from shellder_kit import Plugin  # noqa: E402
 from shellder_kit import panel as P  # noqa: E402
@@ -131,8 +131,8 @@ class WeatherPanel(P.Panel):
 
     def schedule_geocode(self):
         if self.geocode_timer:
-            GLib.source_remove(self.geocode_timer)
-        self.geocode_timer = GLib.timeout_add(300, self._geocode)
+            loop.source_remove(self.geocode_timer)
+        self.geocode_timer = loop.timeout_add(300, self._geocode)
 
     def _geocode(self):
         self.geocode_timer = None
@@ -295,12 +295,12 @@ class Weather(Plugin):
 
     def schedule_refresh(self):
         if self.timer:
-            GLib.source_remove(self.timer)
+            loop.source_remove(self.timer)
         try:
             minutes = max(1, int(self.setting("refreshMinutes", 15)))
         except (TypeError, ValueError):
             minutes = 15
-        self.timer = GLib.timeout_add_seconds(minutes * 60, lambda: self.refresh() and False)
+        self.timer = loop.timeout_add_seconds(minutes * 60, lambda: self.refresh() and False)
 
     def refresh_meteo(self):
         lat, lon = self.location["latitude"], self.location["longitude"]

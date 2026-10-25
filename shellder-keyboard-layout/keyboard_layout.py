@@ -20,7 +20,7 @@ import socket
 import sys
 
 sys.path.insert(0, os.path.join(os.environ.get("SHELLDER_KIT", ""), "python"))
-from gi.repository import GLib  # noqa: E402
+from shellder_kit import loop  # noqa: E402
 
 from shellder_kit import Plugin  # noqa: E402
 
@@ -62,11 +62,11 @@ class KeyboardLayout(Plugin):
             self.later(2, self._connect)
             return
         self.events, self.buf = s, b""
-        GLib.io_add_watch(s.fileno(), GLib.IO_IN | GLib.IO_HUP | GLib.IO_ERR, self._on_events)
+        loop.io_add_watch(s.fileno(), loop.IO_IN | loop.IO_HUP | loop.IO_ERR, self._on_events)
 
     def _on_events(self, fd, cond):
         data = b""
-        if cond & GLib.IO_IN:
+        if cond & loop.IO_IN:
             try:
                 data = self.events.recv(65536)
             except OSError:

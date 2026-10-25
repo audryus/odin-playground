@@ -30,7 +30,7 @@ import json
 import os
 import sys
 
-from gi.repository import Gio, GLib
+from . import loop
 
 
 def hero(icon, title, meta="", switch=None):
@@ -94,7 +94,7 @@ class SkaldPanel:
         self._sent = None
         self._mode = None   # the mode it was opened in
         self._gtk = None    # "plugin": the gtk_nodes.NodesPanel
-        self._child = None  # "process": the Gio.Subprocess
+        self._child = None  # "process": the plugin.Proc
         self._theme = None  # theme data the drawer last got
         plugin._popups.append(self)
         plugin._panel = self
@@ -230,36 +230,27 @@ class SkaldPanel:
 
     def _spawn(self, event, spec):
         kit = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-        launcher = Gio.SubprocessLauncher.new(Gio.SubprocessFlags.STDIN_PIPE | Gio.SubprocessFlags.STDOUT_PIPE)
-        path = os.environ.get("PYTHONPATH")
-        launcher.setenv("PYTHONPATH", kit + (os.pathsep + path if path else ""), True)
-        try:
-            child = launcher.spawnv([sys.executable, "-u", "-m", "shellder_kit.panel_process",
-                                     self._namespace()])
-        except GLib.Error as e:
-            print("%s: panel process: %s" % (self.plugin.name(), e), file=sys.stderr)
+        env = dict(os.environ)
+        env["PYTHONPATH"] = kit + (os.pathsep + env["PYTHONPATH"] if env.get("PYTHONPATH") else "")
+        holder = []
+
+        def line(text):
+            if holder and self._child is holder[0]:
+                self._from_child(text)
+
+        def exited():
+            if holder and self._child is holder[0]:
+                self._child = None  # exited (or crashed): the panel is gone
+                self._closed()
+        child = self.plugin.watch_lines([sys.executable, "-u", "-m", "shellder_kit.panel_process",
+                                         self._namespace()], line, exited, stdin=True, env=env)
+        if child is None:
             return False
+        holder.append(child)
         self._child = child
         self._theme = self.plugin.theme.raw
         self._sent = spec
         self._to_child({"open": {"event": event, "theme": self._theme, "spec": spec}})
-        stream = Gio.DataInputStream.new(child.get_stdout_pipe())
-
-        def read(s, res):
-            try:
-                line, _ = s.read_line_finish_utf8(res)
-            except GLib.Error:
-                line = None
-            if self._child is not child:
-                return  # a child we already let go
-            if line is None:
-                self._child = None  # exited (or crashed): the panel is gone
-                self._closed()
-                return
-            self._from_child(line)
-            if self._child is child:
-                s.read_line_async(GLib.PRIORITY_DEFAULT, None, read)
-        stream.read_line_async(GLib.PRIORITY_DEFAULT, None, read)
         return True
 
     def _from_child(self, line):
@@ -279,8 +270,9 @@ class SkaldPanel:
             return
         data = (json.dumps(obj, ensure_ascii=False) + "\n").encode()
         try:
-            self._child.get_stdin_pipe().write_all(data, None)
-        except GLib.Error:
+            self._child.popen.stdin.write(data)
+            self._child.popen.stdin.flush()
+        except OSError:
             pass  # exiting: its stdout EOF closes the panel
 
     def _stop_child(self):
@@ -288,13 +280,12 @@ class SkaldPanel:
         if child is None:
             return
         try:
-            pipe = child.get_stdin_pipe()
-            pipe.write_all(b'{"close": true}\n', None)
-            pipe.close(None)
-        except GLib.Error:
+            child.popen.stdin.write(b'{"close": true}\n')
+            child.popen.stdin.close()
+        except OSError:
             pass
         # It exits at once; make sure a stuck one does not linger.
-        GLib.timeout_add(2000, lambda: child.force_exit() and False)
+        loop.timeout_add(2000, lambda: child.force_exit() and False)
 
     # ---- events from Shellder --------------------------------------------------------
 

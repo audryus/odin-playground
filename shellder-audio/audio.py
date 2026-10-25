@@ -7,7 +7,8 @@ Original: /usr/share/omarchy/shell/plugins/panels/audio/{Panel.qml,Model.js}.
   left click   Audio panel: hero with the volume mood name and a master
                mute switch, OUTPUT slider + output devices, INPUT slider +
                input devices, SOURCES (per-app streams with mute and volume);
-               described as nodes and drawn by Shellder (panel: "skald")
+               described as nodes; the manifest's "panel" picks who draws
+               it (Shellder, a GTK child process, or GTK in here)
   right click  mute/unmute everything (output and input), like Omarchy
   scroll       output volume in 5% steps, with Omarchy's OSD
 
@@ -30,7 +31,7 @@ from shellder_kit import nodes as N  # noqa: E402
 import model as M  # noqa: E402
 
 class AudioPanel(N.SkaldPanel):
-    """The Audio panel as nodes; Shellder draws it (manifest panel: "skald")."""
+    """The Audio panel as nodes, drawn as the manifest's "panel" says."""
 
     def __init__(self, plugin):
         super().__init__(plugin, width=380, spacing=14)

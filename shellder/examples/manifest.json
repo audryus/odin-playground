@@ -1,0 +1,28 @@
+{
+  "schemaVersion": 1,
+  "id": "you.example",
+  "name": "Example",
+  "version": "1.0.0",
+  "author": "you",
+  "description": "Every manifest field Shellder reads (see examples/README.md)",
+  "kinds": ["bar-widget"],
+  "entryPoints": {
+    "barWidget": ["python3", "-u", "main.py"],
+    "panel": ["python3", "-u", "panel.py"]
+  },
+  "barWidget": {
+    "displayName": "Example",
+    "category": "System",
+    "icon": "󰕾",
+    "defaultSection": "right",
+    "hover": "event",
+    "panel": "process",
+    "menu": [
+      {"id": "refresh", "label": "Refresh", "icon": "󰑐"},
+      {"id": "compact", "label": "Compact mode", "checked": true},
+      {"id": "advanced", "label": "Advanced (soon)", "disabled": true},
+      {"type": "separator"},
+      {"label": "Open settings", "icon": "󰒓", "exec": "omarchy-launch-editor ~/.config/example.toml"}
+    ]
+  }
+}

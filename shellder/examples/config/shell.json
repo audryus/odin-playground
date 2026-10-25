@@ -1,0 +1,61 @@
+{
+  "bar": {
+    "centerAnchor": "shellder.clock",
+    "position": "bottom",
+    "transparent": false,
+    "layout": {
+      "left": [
+        {
+          "id": "shellder.workspaces"
+        }
+      ],
+      "center": [
+        {
+          "id": "shellder.indicators"
+        },
+        {
+          "id": "shellder.clock",
+          "format": "ddd d MMM HH:mm",
+          "formatAlt": "d MMMM 'W'ww yyyy",
+          "verticalFormat": "HH\n\u2014\nmm"
+        },
+        {
+          "id": "shellder.keyboard-layout"
+        },
+        {
+          "id": "shellder.weather"
+        },
+        {
+          "id": "shellder.system-update"
+        }
+      ],
+      "right": [
+        {
+          "id": "shellder.tray",
+          "hidden": [],
+          "pinned": []
+        },
+        {
+          "id": "shellder.agents"
+        },
+        {
+          "id": "shellder.bluetooth"
+        },
+        {
+          "id": "shellder.network"
+        },
+        {
+          "id": "shellder.audio"
+        },
+        {
+          "id": "shellder.monitor"
+        },
+        {
+          "id": "shellder.power"
+        }
+      ]
+    }
+  },
+  "disabled": [],
+  "version": 1
+}

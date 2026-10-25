@@ -1,0 +1,32 @@
+# Shellder — configuração da barra.
+# Reinicie o Shellder depois de editar (pkill shellder; shellder &).
+
+position = "bottom"   # "bottom", "top", "left" ou "right"
+
+# Por padrão a barra segue o tema do Omarchy: tamanho ([bar] size-* do
+# shell.toml, escalado pela fonte), fonte (alias "monospace", o que
+# "omarchy font set" troca) e cores (colors.toml + shell.toml). Descomente
+# para fixar.
+# size = 26            # espessura em px (altura ou largura)
+# font = "JetBrainsMono Nerd Font"
+
+# A barra é só a barra: tudo o que aparece nela vem de plugins em
+# plugins/<pasta>/manifest.json. Liste aqui o "id" de cada plugin, na ordem.
+# Plugins instalados que não aparecem aqui entram na "defaultSection" do
+# manifest deles, no fim da seção. Em barra vertical (left/right):
+# left = topo, center = meio, right = base.
+left   = []
+center = []
+right  = []
+
+# ids de plugins que não devem aparecer nem rodar.
+disabled = []
+
+# Paleta base, por cima do colors.toml do Omarchy; as cores de superfície
+# (barra, popups, hover) continuam derivadas dela pelo shell.toml.
+[colors]
+# background = "#1a1b26"
+# foreground = "#a9b1d6"
+# muted      = "#565f89"
+# accent     = "#7aa2f7"
+# urgent     = "#f7768e"

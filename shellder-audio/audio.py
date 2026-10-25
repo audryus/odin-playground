@@ -6,7 +6,8 @@ Original: /usr/share/omarchy/shell/plugins/panels/audio/{Panel.qml,Model.js}.
   bar          volume glyph (Waybar's pulseaudio set, headphones glyph)
   left click   Audio panel: hero with the volume mood name and a master
                mute switch, OUTPUT slider + output devices, INPUT slider +
-               input devices, SOURCES (per-app streams with mute and volume)
+               input devices, SOURCES (per-app streams with mute and volume);
+               described as nodes and drawn by Shellder (panel: "skald")
   right click  mute/unmute everything (output and input), like Omarchy
   scroll       output volume in 5% steps, with Omarchy's OSD
 
@@ -24,128 +25,79 @@ sys.path.insert(0, os.path.join(os.environ.get("SHELLDER_KIT", ""), "python"))
 from gi.repository import GLib  # noqa: E402
 
 from shellder_kit import Plugin  # noqa: E402
-from shellder_kit import panel as P  # noqa: E402
+from shellder_kit import nodes as N  # noqa: E402
 
 import model as M  # noqa: E402
 
-CSS = """
-.au-value { font-size: %(caption)dpx; font-weight: bold; color: %(dim14)s; }
-.au-glyph { font-size: %(title)dpx; min-width: 22px; }
-.au-check { font-size: %(subtitle)dpx; }
-.au-stream-value { font-size: %(body_small)dpx; color: %(dim14)s; }
-"""
+class AudioPanel(N.SkaldPanel):
+    """The Audio panel as nodes; Shellder draws it (manifest panel: "skald")."""
 
-
-def section_header(title):
-    Gtk = P.Gtk
-    row = Gtk.Box(spacing=8)
-    row.append(P.label(title, "sk-section", xalign=0, hexpand=True))
-    value = P.label("", "au-value", xalign=1)
-    row.append(value)
-    return row, value
-
-
-class AudioPanel(P.Panel):
     def __init__(self, plugin):
-        super().__init__(plugin, "shellder-audio", width=380, css=CSS)
+        super().__init__(plugin, width=380, spacing=14)
+        self.nodes = {}  # node id -> the sink/source/stream it acts on
 
-    def build(self, card):
-        Gtk = P.Gtk
-        card.set_spacing(14)
-        self.master = P.switch(True, self.on_master)
-        box, self.hero = P.hero("\uf028", "Audio", "", trailing=self.master)
-        card.append(box)
-
-        card.append(P.separator())
-        out = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=6)
-        head, self.out_value = section_header("OUTPUT")
-        self.out_slider = P.slider(0.5, lambda v: self.plugin.set_volume("sink", v), 0, 1, 0.01)
-        self.sinks_box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=2)
-        for w in (head, self.out_slider, self.sinks_box):
-            out.append(w)
-        card.append(out)
-
-        self.in_sep = P.separator()
-        card.append(self.in_sep)
-        self.in_box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=6)
-        head, self.in_value = section_header("INPUT")
-        self.in_slider = P.slider(0.5, lambda v: self.plugin.set_volume("source", v), 0, 1, 0.01)
-        self.sources_box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=2)
-        for w in (head, self.in_slider, self.sources_box):
-            self.in_box.append(w)
-        card.append(self.in_box)
-
-        self.streams_sep = P.separator()
-        card.append(self.streams_sep)
-        self.streams_box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=6)
-        card.append(self.streams_box)
-
-    def on_master(self, on):
-        self.plugin.set_all_muted(not on)
-
-    def on_key(self, keyval, ch):
-        K = P.Gdk
-        if keyval in (K.KEY_Left, K.KEY_Right):
-            self.plugin.step_volume(0.05 if keyval == K.KEY_Right else -0.05, osd=False)
-            return True
-        if ch in ("m", "M"):
-            self.plugin.toggle_mute("sink")
-            return True
-        return False
-
-    def device_rows(self, box, nodes, default, kind):
-        P.clear(box)
+    def device_rows(self, nodes, default, kind):
+        rows = []
         for n in nodes:
             glyph = M.sink_glyph(n) if kind == "sink" else M.source_glyph(n)
             is_default = n.get("name") == default
-            box.append(P.row(P.label(glyph, "au-glyph"),
-                             P.label(M.node_label(n), xalign=0, hexpand=True, ellipsize=3),
-                             P.label("󰄬" if is_default else "", "au-check"),
-                             selected=is_default,
-                             on_click=lambda n=n: self.plugin.set_default(kind, n)))
+            nid = "%s:%s" % (kind, n.get("name"))
+            self.nodes[nid] = (kind, n)
+            rows.append(N.row(M.node_label(n), id=nid, icon=glyph,
+                              trailing="\U000f012c" if is_default else "", selected=is_default))
+        return N.group(rows, spacing=2)
 
-    def refresh(self):
-        if self.window is None:
-            return
+    def items(self):
         pl = self.plugin
+        self.nodes = {}
         sink, source = pl.volume_sink(), pl.default_node("source")
         vol, muted = M.volume_of(sink), bool(sink and sink.get("mute"))
-        P.set_hero(self.hero, icon=pl.output_icon(), meta=M.output_volume_name(vol, muted))
-        P.set_switch(self.master, pl.any_audible())
-        self.master.set_tooltip_text("Mute" if pl.any_audible() else "Unmute")
-        self.out_value.set_label("%d%%" % round(vol * 100))
-        P.set_slider(self.out_slider, vol)
-        self.device_rows(self.sinks_box, pl.available_sinks(), pl.defaults.get("sink"), "sink")
-
-        has_in = bool(pl.sources) or source is not None
-        for w in (self.in_sep, self.in_box):
-            w.set_visible(has_in)
-        if source is not None:
-            self.in_value.set_label("%d%%" % round(M.volume_of(source) * 100))
-            P.set_slider(self.in_slider, M.volume_of(source))
-        self.in_slider.set_visible(source is not None)
-        self.device_rows(self.sources_box, pl.sources, pl.defaults.get("source"), "source")
-
-        streams = pl.streams
-        self.streams_sep.set_visible(bool(streams))
-        self.streams_box.set_visible(bool(streams))
-        P.clear(self.streams_box)
-        if streams:
-            self.streams_box.append(P.section("SOURCES"))
-            for s in streams:
-                Gtk = P.Gtk
+        items = [
+            N.hero(pl.output_icon(), "Audio", meta=M.output_volume_name(vol, muted),
+                   switch=N.switch("master", pl.any_audible())),
+            N.separator(),
+            N.group([N.section("OUTPUT", "%d%%" % round(vol * 100)),
+                     N.slider("volume:sink", vol, 0, 1, 0.01),
+                     self.device_rows(pl.available_sinks(), pl.defaults.get("sink"), "sink")]),
+        ]
+        if pl.sources or source is not None:
+            in_vol = M.volume_of(source) if source is not None else 0
+            items += [N.separator(),
+                      N.group([N.section("INPUT", "%d%%" % round(in_vol * 100) if source else ""),
+                               N.slider("volume:source", in_vol, 0, 1, 0.01) if source else None,
+                               self.device_rows(pl.sources, pl.defaults.get("source"), "source")])]
+        if pl.streams:
+            streams = [N.section("SOURCES")]
+            for s in pl.streams:
+                idx = str(s["index"])
+                self.nodes["stream:" + idx] = ("stream", s)
                 svol = M.volume_of(s)
-                mute = P.action_button("󰝟" if s.get("mute") else "󰕾",
-                                       lambda s=s: pl.toggle_stream_mute(s), "Mute")
-                head = Gtk.Box(spacing=8)
-                head.append(mute)
-                head.append(P.label(M.stream_label(s), xalign=0, hexpand=True, ellipsize=3))
-                head.append(P.label("%d%%" % round(svol * 100), "au-stream-value"))
-                slider = P.slider(svol, lambda v, s=s: pl.set_stream_volume(s, v), 0, 1, 0.01)
-                col = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=0)
-                col.append(head)
-                col.append(slider)
-                self.streams_box.append(col)
+                mute_icon = "\U000f075f" if s.get("mute") else "\U000f057e"
+                streams.append(N.group([
+                    N.row(M.stream_label(s), plain=True, value="%d%%" % round(svol * 100),
+                          action=N.action("mute:" + idx, mute_icon)),
+                    N.slider("stream:" + idx, svol, 0, 1, 0.01)], spacing=0))
+            items += [N.separator(), N.group(streams)]
+        return items
+
+    def on_action(self, action, id, value):
+        pl = self.plugin
+        if id == "master" and action == "toggle":
+            pl.set_all_muted(not value)
+        elif id == "volume:sink" and action == "change":
+            pl.set_volume("sink", value)
+        elif id == "volume:source" and action == "change":
+            pl.set_volume("source", value)
+        elif id.startswith("mute:"):
+            node = self.nodes.get("stream:" + id[5:])
+            if node:
+                pl.toggle_stream_mute(node[1])
+        elif id in self.nodes:
+            kind, node = self.nodes[id]
+            if kind == "stream" and action == "change":
+                pl.set_stream_volume(node, value)
+            elif kind in ("sink", "source") and action == "click":
+                pl.set_default(kind, node)
 
 
 class Audio(Plugin):
@@ -207,8 +159,7 @@ class Audio(Plugin):
         self.streams = [s for s in (got.get("streams") or []) if M.props(s).get("application.name")]
         self.defaults = {"sink": got.get("dsink") or "", "source": got.get("dsource") or ""}
         self.render()
-        if self.panel.opened:
-            self.panel.refresh()
+        self.panel.refresh()
 
     def resolve_volume_sink(self):
         def done(ok, out, err):
@@ -299,7 +250,6 @@ class Audio(Plugin):
         self.emit(icon=self.output_icon(), text="")
 
     def on_config(self, ev):
-        self.panel.theme_changed()
         self.render()
 
     def on_click(self, ev):

@@ -5,14 +5,21 @@
   "version": "1.0.0",
   "author": "audryus",
   "description": "Volume, output/input devices and per-app streams",
-  "kinds": ["bar-widget"],
+  "kinds": [
+    "bar-widget"
+  ],
   "entryPoints": {
-    "barWidget": ["python3", "-u", "audio.py"]
+    "barWidget": [
+      "python3",
+      "-u",
+      "audio.py"
+    ]
   },
   "barWidget": {
     "displayName": "Audio",
     "category": "System",
     "defaultSection": "right",
-    "hover": "none"
+    "hover": "none",
+    "panel": "skald"
   }
 }

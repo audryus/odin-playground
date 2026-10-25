@@ -10,7 +10,12 @@ Port of `omarchy.audio` (`/usr/share/omarchy/shell/plugins/panels/audio/`) to
 | right click | Mute/unmute output and input together |
 | scroll      | Output volume ±5%, with Omarchy's OSD (`omarchy-shell … omarchy.osd`) |
 
-Keys in the panel: `←`/`→` volume, `m` mute, `Esc` close.
+The panel is drawn by Shellder (`"panel": "skald"` in the manifest): the plugin
+only sends its content as nodes (`shellder_kit.nodes`) and loads no GUI toolkit,
+about 16 MiB of RAM instead of about 30 MiB with GTK. It closes on a click
+outside it or on another bar item. Shellder panels take no keyboard yet, so the
+GTK version's `←`/`→`/`m`/`Esc` keys are gone; scroll on the bar icon still
+changes the volume.
 
 Omarchy reads PipeWire through quickshell; here it is pipewire-pulse through
 `pactl -f json`, reloaded on `pactl subscribe` events (no polling). Default

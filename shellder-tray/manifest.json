@@ -1,0 +1,18 @@
+{
+  "schemaVersion": 1,
+  "id": "shellder.tray",
+  "name": "System tray",
+  "version": "1.0.0",
+  "author": "audryus",
+  "description": "Status notifier items",
+  "kinds": ["bar-widget"],
+  "entryPoints": {
+    "barWidget": ["python3", "-u", "tray.py"]
+  },
+  "barWidget": {
+    "displayName": "System tray",
+    "category": "Status",
+    "defaultSection": "right",
+    "hover": "tooltip"
+  }
+}

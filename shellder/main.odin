@@ -53,7 +53,9 @@ Panel_Dismiss :: struct { popup: ^Popup }
 dismiss_popups :: proc(app: ^App, keep: ^Plugin) {
 	if app.panel != nil && app.panel.plugin != keep { panel_dismiss(app, app.panel) }
 	for p in app.plugins.plugins {
-		if p != keep { plugin_send_line(p, `{"event":"dismiss"}` + "\n") }
+		if p == keep { continue }
+		plugin_send_line(p, `{"event":"dismiss"}` + "\n")
+		panel_proc_stop(p)
 	}
 }
 
@@ -66,6 +68,9 @@ update :: proc(app: ^App, m: Msg) {
 		if v.ev.kind == .Click {
 			dismiss_popups(app, v.plugin)
 			v.plugin.click_out, v.plugin.click_rect = v.bar_out, v.ev.item
+			// A panel process: any click on the item ends it, a left click
+			// starts it (and does not reach the bar process).
+			if panel_proc_toggle(app, v.plugin, v.ev) { return }
 		}
 		plugin_send_event(v.plugin, v.ev, app.cfg.position)
 	case Open_Menu:
@@ -191,7 +196,11 @@ config_line_for :: proc(app: ^App, p: ^Plugin) -> string {
 }
 
 send_config_all :: proc(app: ^App) {
-	for p in app.plugins.plugins { plugin_send_line(p, config_line_for(app, p)) }
+	for p in app.plugins.plugins {
+		line := config_line_for(app, p)
+		plugin_send_line(p, line)
+		panel_proc_send(p, line)
+	}
 }
 
 // apply_settings_updates saves the settings plugins sent to shell.json and
@@ -763,6 +772,7 @@ main :: proc() {
 
 		for p in app.plugins.plugins {
 			if plugin_read(p) { mark_all_dirty(app) }
+			panel_proc_read(p)
 			if plugin_tick(p) { plugin_start(p, &app.cfg, config_line_for(app, p)) }
 		}
 		apply_settings_updates(app)
@@ -846,6 +856,7 @@ main :: proc() {
 		append(&fds, posix.pollfd{fd = posix.FD(wb_fd()), events = {.IN}})
 		for p in app.plugins.plugins {
 			if p.out_fd >= 0 { append(&fds, posix.pollfd{fd = posix.FD(p.out_fd), events = {.IN}}) }
+			if p.panel_out >= 0 { append(&fds, posix.pollfd{fd = posix.FD(p.panel_out), events = {.IN}}) }
 		}
 
 		if wb_before_poll() < 0 {

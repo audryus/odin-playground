@@ -8,13 +8,15 @@ Shellder exports SHELLDER_KIT to every plugin. The kit covers:
   Plugin  the protocol loop (stdin/stdout JSON), theme, settings, timers,
           async commands
   Theme   the Omarchy theme from the "config" event, as GTK CSS
+  PanelApp  base of a manifest entryPoints.panel program (a panel that is
+          its own process, started and ended by Shellder)
   Panel   popup following Omarchy's KeyboardPanel (shellder_kit.panel;
           imports GTK only when used)
   nodes   panels described as data (SkaldPanel), drawn by Shellder, by a
           GTK child process or by GTK in the plugin, as the manifest says
 """
 
-from .plugin import Plugin
+from .plugin import PanelApp, Plugin
 from .theme import Theme
 
-__all__ = ["Plugin", "Theme"]
+__all__ = ["PanelApp", "Plugin", "Theme"]

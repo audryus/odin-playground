@@ -377,6 +377,7 @@ class Panel:
         self.opened = False
         self.gap = 8
         self.event = None
+        self.closed_hooks = []  # called after every close (PanelApp exits)
         plugin._popups.append(self)
 
     # ---- override ---------------------------------------------------------
@@ -427,6 +428,7 @@ class Panel:
     def close(self):
         """Close and destroy the windows: hidden ones would keep their
         buffers (the panel layer covers the output). open() builds again."""
+        was_open = self.opened
         if self.opened:
             self.opened = False
             self.on_close()
@@ -436,6 +438,9 @@ class Panel:
         if self.window is not None:
             self.window.destroy()
             self.window = self.card = None
+        if was_open:
+            for hook in self.closed_hooks:
+                hook()
 
     def theme_changed(self):
         if self.window is not None:

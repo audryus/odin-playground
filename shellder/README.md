@@ -155,11 +155,12 @@ message per line**.
 | `id`                          | yes | Unique id; it is the `id` of the entry in `shell.json`'s `bar.layout` |
 | `kinds`                       | yes | Must include `"bar-widget"` (the only supported kind for now) |
 | `entryPoints.barWidget`       | yes | What to run. String: path of an executable inside the folder (needs `chmod +x` and a shebang). Array: command + arguments, looked up in `PATH` (`["node", "index.js"]`, `["./my-binary"]`) |
+| `entryPoints.panel`           | no  | The panel program, same format. Requires `barWidget.panel: "process"`: Shellder runs it only while the panel is open (see *Panels in their own process*) |
 | `barWidget.icon`              | no  | Initial icon: one or more characters. The Omarchy font is a Nerd Font, so Nerd Font glyphs work |
 | `barWidget.defaultSection`    | no  | `left`, `center` or `right` (default `right`); on a vertical bar: top, middle, bottom |
 | `barWidget.hover`             | no  | What hovering does: `"tooltip"` (default) — Shellder shows the item/segment `tooltip`; `"event"` — no Shellder tooltip, the plugin gets `hover` events and shows its own popup; `"none"` — nothing. `hover` events are sent in both `tooltip` and `event` modes |
 | `barWidget.menu`              | no  | Right-click menu drawn by Shellder (see below). When set, the right click opens it instead of reaching the plugin |
-| `barWidget.panel`             | no  | Who draws the plugin's panel: `"plugin"` (default) — the plugin's own window; `"skald"` — the plugin sends `{"panel": ...}` and Shellder draws it (see *Panels drawn by Shellder*); `"process"` — a child process that exists only while the panel is open (the Python kit's `SkaldPanel` draws the nodes with GTK there). Forwarded to the plugin in `config` as `"panel"` |
+| `barWidget.panel`             | no  | Who draws the plugin's panel: `"plugin"` (default) — the plugin's own window; `"skald"` — the plugin sends `{"panel": ...}` and Shellder draws it (see *Panels drawn by Shellder*); `"process"` — a process that exists only while the panel is open: with `entryPoints.panel`, Shellder starts and ends it (see *Panels in their own process*); without it, the Python kit's `SkaldPanel` draws its nodes with GTK in a child of the plugin. Forwarded to the plugin in `config` as `"panel"` |
 | `name`, `version`, `author`, `description`, `schemaVersion`, `barWidget.displayName`, `barWidget.category` | no | Informational |
 
 The process runs with the plugin folder as `cwd` and gets these variables:
@@ -170,6 +171,7 @@ The process runs with the plugin folder as `cwd` and gets these variables:
 | `SHELLDER_PLUGIN_DIR` | the plugin folder |
 | `SHELLDER_CONFIG_DIR` | Shellder's config folder |
 | `SHELLDER_KIT`        | Shellder's plugin kit folder (see below) |
+| `SHELLDER_PANEL`      | `1` in the `entryPoints.panel` program only |
 
 The plugin's stderr goes to Shellder's stderr.
 
@@ -413,6 +415,30 @@ Omarchy's `KeyboardPanel.qml` — it is what allows clicking outside to close
 
 `shellder_kit.panel.Panel` implements this with GTK4 + gtk4-layer-shell.
 
+### Panels in their own process
+
+A GUI toolkit costs memory for as long as it is loaded: a GTK panel inside
+the bar process keeps it there after the first open (shellder-network: 16 MiB
+before, 39 MiB open, 36 MiB after closing). With `barWidget.panel:
+"process"` and `entryPoints.panel`, the panel is a separate program that
+exists only while it is on screen, and the bar process loads no toolkit:
+
+- A **left click** on the item starts it (the bar process does not get that
+  click). Its stdin gets the same `config` line as the bar process (again
+  when the theme changes), then that `click` — with `monitor`, `bar` and
+  `item` to place the window. It runs in the plugin folder with the same
+  variables plus `SHELLDER_PANEL=1`; stdout is read and discarded.
+- Shellder **ends it** (SIGTERM to its group) on the next click on the item,
+  a click on another item or on the bar's empty area, and when another popup
+  or menu opens. The program **exits by itself** when its window closes
+  (`Esc`, a click outside).
+- The two processes share nothing: each reads what it needs from the system.
+
+`shellder_kit.PanelApp` is that program in Python: set `self.panel` (a
+`panel.Panel`) in `on_start`; it opens on the click and the process exits
+when it closes. shellder-network uses it: 14.8 MiB for the bar, plus ~39 MiB
+only while the panel is open.
+
 ### Lifecycle
 
 - All plugins start with Shellder and are stopped (SIGTERM to the process
@@ -460,6 +486,7 @@ while true; do date +%S; sleep 1; done
 ```
 main.odin      loop, layout, one bar per output, rendering
 plugins.odin   manifest, processes, protocol, hot reload
+panel_process.odin  entryPoints.panel programs (started on click, ended on dismiss)
 omarchy.odin   Omarchy theme (palette, shell.toml, font, Hyprland)
 config.odin    shell.json (read, layout, settings, save)
 native.odin    bindings for the C code

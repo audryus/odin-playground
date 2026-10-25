@@ -228,3 +228,30 @@ class Plugin:
             self.loop.run()
         except KeyboardInterrupt:
             pass
+
+
+class PanelApp(Plugin):
+    """The program behind the manifest's entryPoints.panel (barWidget.panel:
+    "process"). Shellder starts it on a left click on the item and ends it
+    on the next click or when another popup opens; it exits by itself when
+    the panel closes (Esc, a click outside). Set self.panel (a panel.Panel)
+    in on_start; it opens on the click that started the process.
+
+        class NetPanelApp(PanelApp):
+            def on_start(self):
+                self.panel = MyPanel(self, "shellder-network", width=380)
+        NetPanelApp().run()
+
+    The bar process runs separately and needs no GUI toolkit; the two share
+    nothing but what they read from the system.
+    """
+
+    panel = None
+
+    def on_click(self, ev):
+        if self.panel is None or self.panel.opened:
+            return
+        self.panel.closed_hooks.append(self.loop.quit)
+        self.panel.open(ev)
+        if not self.panel.opened:  # no GTK
+            self.loop.quit()

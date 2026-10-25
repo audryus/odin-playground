@@ -59,8 +59,10 @@ Hover_Mode :: enum { Tooltip, Event, None }
 // in the "config" event so the plugin (or the kit) knows how to show its panel:
 //   "plugin" (default) the plugin shows its own windows
 //   "skald"            the plugin sends {"panel": ...} and Shellder draws it
-//   "process"          the plugin shows it from a child process that lives
-//                      while the panel is open (the Python kit's SkaldPanel)
+//   "process"          with entryPoints.panel: Shellder runs that program
+//                      only while the panel is open (panel_process.odin);
+//                      without it, the plugin's own child process (the
+//                      Python kit's SkaldPanel)
 Panel_Mode :: enum { Plugin, Skald, Process }
 PANEL_MODE_NAMES := [Panel_Mode]string{ .Plugin = "plugin", .Skald = "skald", .Process = "process" }
 
@@ -139,6 +141,7 @@ Plugin :: struct {
 	hover_mode:      Hover_Mode,
 	menu:            [dynamic]Menu_Item, // manifest menu, replaced by {"menu": ...}
 	panel_mode:      Panel_Mode,
+	panel_argv:      []string, // entryPoints.panel (panel_process.odin)
 
 	// {"panel": ...} — the description of a Shellder-drawn panel (nil: closed),
 	// and where the last click came from (the panel opens next to it).
@@ -161,6 +164,11 @@ Plugin :: struct {
 	restart_at: time.Time,
 	backoff:    time.Duration,
 	reaping:    bool, // exited (EOF) and not reaped yet
+
+	// the entryPoints.panel process, while the panel is open
+	panel_pid:  i32,
+	panel_in:   i32,
+	panel_out:  i32,
 
 	// hot reload (plugins_sync)
 	tree_mtime:    time.Time, // when we last (re)loaded
@@ -330,11 +338,13 @@ plugin_reload :: proc(set: ^Plugin_Set, p: ^Plugin) -> bool {
 	delete(p.id); delete(p.name); delete(p.manifest_icon)
 	for a in p.argv { delete(a) }
 	delete(p.argv)
+	for a in p.panel_argv { delete(a) }
+	delete(p.panel_argv)
 	if p.view.icon == "" || p.view.icon == p.manifest_icon {
 		delete(p.view.icon)
 		p.view.icon = strings.clone(q.manifest_icon)
 	}
-	p.id, p.name, p.argv = q.id, q.name, q.argv
+	p.id, p.name, p.argv, p.panel_argv = q.id, q.name, q.argv, q.panel_argv
 	p.manifest_icon, p.default_section = q.manifest_icon, q.default_section
 	p.hover_mode, p.panel_mode = q.hover_mode, q.panel_mode
 	menu_free(&p.menu); delete(p.menu)
@@ -356,6 +366,8 @@ plugin_free :: proc(p: ^Plugin) {
 	delete(p.per_monitor)
 	for a in p.argv { delete(a) }
 	delete(p.argv)
+	for a in p.panel_argv { delete(a) }
+	delete(p.panel_argv)
 	delete(p.line_buf)
 	for u in p.settings_updates { json.destroy_value(u) }
 	delete(p.settings_updates)
@@ -446,19 +458,28 @@ manifest_load :: proc(dir: string) -> (p: ^Plugin, ok: bool) {
 		return
 	}
 
-	// entryPoints.barWidget: "file" (an executable) or ["cmd", "arg", ...].
-	argv := make([dynamic]string)
-	entry, _ := m["entryPoints"].(json.Object)
-	#partial switch v in entry["barWidget"] {
-	case json.String:
-		append(&argv, strings.concatenate({dir, "/", v}))
-	case json.Array:
-		for a in v {
-			s, _ := a.(json.String)
-			append(&argv, strings.clone(s))
+	// entryPoints.barWidget / .panel: "file" (an executable) or ["cmd", "arg", ...].
+	entry_argv :: proc(dir: string, v: json.Value) -> []string {
+		argv := make([dynamic]string)
+		#partial switch e in v {
+		case json.String:
+			append(&argv, strings.concatenate({dir, "/", e}))
+		case json.Array:
+			for a in e {
+				s, _ := a.(json.String)
+				append(&argv, strings.clone(s))
+			}
 		}
+		if len(argv) > 0 && argv[0] == "" {
+			for a in argv { delete(a) }
+			clear(&argv)
+		}
+		return argv[:]
 	}
-	if len(argv) == 0 || argv[0] == "" {
+	entry, _ := m["entryPoints"].(json.Object)
+	argv := entry_argv(dir, entry["barWidget"])
+	if len(argv) == 0 {
+		delete(argv)
 		fail(path, "missing entryPoints.barWidget (string or array)")
 		return
 	}
@@ -473,7 +494,8 @@ manifest_load :: proc(dir: string) -> (p: ^Plugin, ok: bool) {
 	p = new(Plugin)
 	p.id              = strings.clone(id)
 	p.dir             = strings.clone(dir)
-	p.argv            = argv[:]
+	p.argv            = argv
+	p.panel_argv      = entry_argv(dir, entry["panel"])
 	p.default_section = section
 	p.view.visible    = true
 	name, _ := m["name"].(json.String)
@@ -490,8 +512,12 @@ manifest_load :: proc(dir: string) -> (p: ^Plugin, ok: bool) {
 	case "skald":   p.panel_mode = .Skald
 	case "process": p.panel_mode = .Process
 	}
+	if len(p.panel_argv) > 0 && p.panel_mode != .Process {
+		fail(path, "entryPoints.panel is only used with barWidget.panel \"process\"")
+	}
 	p.click_out = -1
 	p.pid, p.in_fd, p.out_fd = -1, -1, -1
+	p.panel_pid, p.panel_in, p.panel_out = -1, -1, -1
 	p.backoff = RESTART_MIN
 	return p, true
 }
@@ -536,9 +562,10 @@ plugin_send_line :: proc(p: ^Plugin, line: string) {
 // plugin_stop ends the process (SIGTERM to the group) without waiting: the pid
 // goes to `zombies` and is reaped by plugins_reap.
 plugin_stop :: proc(p: ^Plugin) {
+	panel_proc_stop(p)
 	if p.pid > 0 {
 		sh_kill_group(p.pid)
-		if sh_reap(p.pid) == 0 { append(&zombies, p.pid) }
+		reap_later(p.pid)
 	}
 	plugin_close_fds(p)
 	p.pid = -1
@@ -549,6 +576,11 @@ plugin_stop :: proc(p: ^Plugin) {
 
 @(private = "file")
 zombies: [dynamic]i32
+
+// reap_later reaps pid now if it already exited, else from plugins_reap.
+reap_later :: proc(pid: i32) {
+	if sh_reap(pid) == 0 { append(&zombies, pid) }
+}
 
 plugins_reap :: proc() {
 	for i := len(zombies) - 1; i >= 0; i -= 1 {
@@ -725,6 +757,10 @@ Plugin_Event :: struct {
 }
 
 plugin_send_event :: proc(p: ^Plugin, ev: Plugin_Event, position: Position) {
+	plugin_send_line(p, plugin_event_line(ev, position))
+}
+
+plugin_event_line :: proc(ev: Plugin_Event, position: Position) -> string {
 	head: string
 	switch ev.kind {
 	case .Click:
@@ -744,9 +780,8 @@ plugin_send_event :: proc(p: ^Plugin, ev: Plugin_Event, position: Position) {
 		seg, _ := json.marshal(ev.segment, allocator = context.temp_allocator)
 		head = fmt.tprintf(`%s,"segment":%s`, head, string(seg))
 	}
-	line := fmt.tprintf(
+	return fmt.tprintf(
 		`{{%s,"monitor":%s,"bar":{{"position":"%s","width":%d,"height":%d}},"item":{{"x":%d,"y":%d,"width":%d,"height":%d}}}}` + "\n",
 		head, string(monitor), POSITION_NAMES[position], ev.bar_size.x, ev.bar_size.y,
 		int(ev.item.x), int(ev.item.y), int(ev.item.w), int(ev.item.h))
-	plugin_send_line(p, line)
 }

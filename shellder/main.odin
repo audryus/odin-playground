@@ -342,12 +342,21 @@ view_plugin :: proc(app: ^App, p: ^Plugin, bar: ^Bar, ctx: ^skald.Ctx(Msg)) -> (
 		w, h := sg.width, bar_size
 		if vert { w, h = bar_size, sg.width > 0 ? sg.width : 0 }
 		pad: f32 = (vert ? h : w) > 0 ? 0 : MARGIN
-		child := skald.row(skald.text(label, c, size, font = app.font),
+		content := skald.text(label, c, size, font = app.font)
+		if sg.image != "" {
+			content = skald.image(ctx, sg.image, sg.image_size, sg.image_size, fit = .Contain,
+				tint = {1, 1, 1, sg.opacity})
+		}
+		child := skald.row(content,
 			width = w, height = h, padding = vert ? 0 : pad,
 			main_align = .Center, cross_align = .Center)
 		if vert && h == 0 {
-			child = skald.col(skald.text(label, c, size, font = app.font),
+			child = skald.col(content,
 				width = w, padding = 5, main_align = .Center, cross_align = .Center)
+		}
+		if sg.passive {
+			append(&parts, child)
+			continue
 		}
 		append(&parts, clickable_zone(app, ctx, p, bar, id, child, hovered, sg.id,
 			sg.tooltip != "" ? sg.tooltip : pv.tooltip))
@@ -356,18 +365,24 @@ view_plugin :: proc(app: ^App, p: ^Plugin, bar: ^Bar, ctx: ^skald.Ctx(Msg)) -> (
 	// "hover" to the plugin when the pointer enters/leaves the item on this bar
 	// (Omarchy's indicators reveal the inactive ones this way).
 	// While the plugin's right-click menu is open its hover popup must go away.
+	// Sent again, with the new "segment", when the pointer moves to another
+	// segment of the item (the tray expands its drawer only over the drawer).
 	if app.menu != nil && app.menu.plugin == p { any_hover = false }
-	if p.hover_mode != .None && p.hovered_on[bar.name] != any_hover {
-		if _, had := p.hovered_on[bar.name]; !had {
-			p.hovered_on[strings.clone(bar.name)] = any_hover
+	hover_seg := ""
+	hover_rect: skald.Rect // the hovered zone, so the plugin can place a hover popup
+	if any_hover && app.hover_now.plugin == p {
+		hover_seg, hover_rect = app.hover_now.segment, app.hover_now.rect
+	}
+	state := any_hover ? fmt.tprintf("\x01%s", hover_seg) : ""
+	if p.hover_mode != .None && p.hovered_on[bar.name] != state {
+		if old, had := p.hovered_on[bar.name]; !had {
+			p.hovered_on[strings.clone(bar.name)] = strings.clone(state)
 		} else {
-			p.hovered_on[bar.name] = any_hover
+			delete(old)
+			p.hovered_on[bar.name] = strings.clone(state)
 		}
-		// The hovered zone's rect, so the plugin can place a hover popup.
-		hover_rect: skald.Rect
-		if any_hover && app.hover_now.plugin == p { hover_rect = app.hover_now.rect }
 		skald.send(ctx, Plugin_Input{plugin = p, ev = Plugin_Event{
-			kind = .Hover, dir = any_hover ? 1 : 0, monitor = bar.name,
+			kind = .Hover, dir = any_hover ? 1 : 0, monitor = bar.name, segment = hover_seg,
 			item = hover_rect, bar_size = bar.win.size_logical,
 		}})
 	}

@@ -41,6 +41,9 @@ Segment :: struct {
 	font:    string, // theme size token ("caption", "body", "iconFont"...) or px
 	opacity: f32, // 0..1 (default 1)
 	width:   f32, // logical px; 0 = fit the content
+	image:      string, // PNG path drawn instead of icon/text (tray icons)
+	image_size: f32,    // logical px of the image's square (default 12)
+	passive:    bool,   // drawn only: no clicks, hover or tooltip (spacers)
 }
 
 // Hover_Mode comes from the manifest's barWidget.hover:
@@ -104,7 +107,7 @@ view_free :: proc(v: ^Plugin_View) {
 segments_clear :: proc(segs: ^[dynamic]Segment) {
 	for sg in segs {
 		delete(sg.id); delete(sg.text); delete(sg.icon); delete(sg.color)
-		delete(sg.tooltip); delete(sg.font)
+		delete(sg.tooltip); delete(sg.font); delete(sg.image)
 	}
 	clear(segs)
 }
@@ -148,7 +151,7 @@ Plugin :: struct {
 	line_buf:   [dynamic]u8,
 
 	// Which bars have the pointer over the item (for the "hover" event).
-	hovered_on: map[string]bool,
+	hovered_on: map[string]string, // output -> "" (not hovered) or "\x01" + hovered segment id
 
 	// {"settings": {...}} received and not yet saved to shell.json
 	// (heap; main applies and frees them).
@@ -651,6 +654,9 @@ plugin_apply_line :: proc(p: ^Plugin, line: string) -> bool {
 				font    = strings.clone(json_font(o["font"]) or_else ""),
 				opacity = clamp(num(o, "opacity", 1), 0, 1),
 				width   = max(num(o, "width", 0), 0),
+				image   = str(o, "image"),
+				image_size = max(num(o, "imageSize", 12), 1),
+				passive = (o["passive"].(json.Boolean) or_else false),
 			})
 		}
 	}

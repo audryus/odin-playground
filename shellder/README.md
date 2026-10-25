@@ -188,7 +188,7 @@ Each line is an update. It can be a JSON object:
 | `font`     | Text size: a token of the Omarchy type scale (`caption`, `bodySmall`, `body`, `title`, `icon`, `iconFont`, ...) or px |
 | `tooltip`  | Tooltip text |
 | `visible`  | `false` hides the item |
-| `segments` | Buttons inside the item: `[{"id": "1", "text": "1", "icon": "", "color": "accent", "opacity": 0.5, "width": 20, "font": "caption", "tooltip": "..."}]` (only `id` is required). Replaces the previous list. A click on a segment carries `"segment": "<id>"` |
+| `segments` | Buttons inside the item: `[{"id": "1", "text": "1", "icon": "", "color": "accent", "opacity": 0.5, "width": 20, "font": "caption", "tooltip": "..."}]` (only `id` is required). `"image": "/path/icon.png"` draws a PNG (fit inside an `imageSize` square, default 12 logical px; give it 2× pixels for HiDPI) instead of the text; write a new file name when the picture changes, images are cached by path. `"passive": true` makes a segment a plain drawing (no click, hover or tooltip), e.g. a spacer that only reserves `width`. Replaces the previous list. A click on a segment carries `"segment": "<id>"` |
 | `monitor`  | Output connector (`"DP-1"`): the update applies only to that output's bar. Without it, it applies to every bar that has not received its own |
 | `settings` | Settings to save in the plugin's `shell.json` entry (`null` deletes a key). Shellder saves them and sends a new `config` |
 | `menu`     | Replaces the right-click menu at runtime (same format as `barWidget.menu`; `[]` disables it) |
@@ -249,8 +249,9 @@ use these values to look like Omarchy.
   inside the bar (logical px, from the bar's top-left corner) — what a plugin
   needs to open a popup next to the bar, aligned with the item.
 - `hover`: the pointer entered (`true`) or left (`false`) the item on that bar;
-  `item` is the hovered zone's rect, to place a hover popup. While the
-  plugin's right-click menu is open it gets `hovered: false`.
+  `item` is the hovered zone's rect, to place a hover popup. Moving to another
+  segment of the item sends `hovered: true` again with the new `segment`. While
+  the plugin's right-click menu is open it gets `hovered: false`.
 
 Reading stdin is optional: if the plugin does not read and the pipe fills up,
 lines are dropped (a plugin never freezes the bar).

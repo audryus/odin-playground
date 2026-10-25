@@ -278,6 +278,7 @@ class HoverPopup:
         self.window = None
         self.card = None
         self.shown = False
+        plugin._popups.append(self)
 
     def build(self, card):
         """Build the content into the card (vertical Gtk.Box). Called on
@@ -303,6 +304,9 @@ class HoverPopup:
             self.window.destroy()
             self.window = self.card = None
         self.shown = False
+
+    def dismiss(self):
+        self.hide()
 
     def _build(self):
         w = Gtk.Window()
@@ -373,6 +377,7 @@ class Panel:
         self.opened = False
         self.gap = 8
         self.event = None
+        plugin._popups.append(self)
 
     # ---- override ---------------------------------------------------------
 
@@ -435,6 +440,10 @@ class Panel:
     def theme_changed(self):
         if self.window is not None:
             apply_css(self.plugin.theme, self.css)
+
+    def dismiss(self):
+        """Shellder's "dismiss": another bar item was clicked."""
+        self.close()
 
     # ---- internals ----------------------------------------------------------
 

@@ -28,6 +28,7 @@ class Plugin:
         self._buf = b""
         self._last = {}
         self._configured = False
+        self._popups = []  # Panel / HoverPopup instances, closed on "dismiss"
 
     # ---- override ---------------------------------------------------------
 
@@ -45,6 +46,10 @@ class Plugin:
 
     def on_hover(self, ev):
         """ev: hovered (bool), monitor, bar, item (the hovered zone)."""
+
+    def on_dismiss(self, ev):
+        """Another bar item was clicked: the kit already closed this plugin's
+        panels; close anything else that should not stay open."""
 
     def on_menu(self, ev):
         """A right-click menu entry without "exec" was picked. ev: id, monitor."""
@@ -200,6 +205,10 @@ class Plugin:
             self.on_hover(ev)
         elif kind == "menu":
             self.on_menu(ev)
+        elif kind == "dismiss":
+            for popup in self._popups:
+                popup.dismiss()
+            self.on_dismiss(ev)
 
     def run(self):
         try:

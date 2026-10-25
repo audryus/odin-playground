@@ -22,6 +22,7 @@ import "gui:skald"
 Msg :: union {
 	Plugin_Input,
 	Open_Menu,
+	Dismiss_All,
 	Menu_Pick,
 	Menu_Dismiss,
 }
@@ -39,14 +40,30 @@ Plugin_Input :: struct {
 	ev:     Plugin_Event, // ev.monitor lives in temp_allocator: update runs before free_all
 }
 
+// Dismiss_All: a click on an empty part of the bar closes every popup.
+Dismiss_All :: struct {}
+
+// dismiss_popups sends {"event":"dismiss"} to every plugin except `keep`
+// (the one being clicked, which handles its own popup).
+dismiss_popups :: proc(app: ^App, keep: ^Plugin) {
+	for p in app.plugins.plugins {
+		if p != keep { plugin_send_line(p, `{"event":"dismiss"}` + "\n") }
+	}
+}
+
 // update writes to the plugin's stdin — in a regular Skald app this would be a
 // Command, but the embedded loop here does not process those.
 update :: proc(app: ^App, m: Msg) {
 	switch v in m {
 	case Plugin_Input:
+		// One popup at a time: a click on an item closes the others' popups.
+		if v.ev.kind == .Click { dismiss_popups(app, v.plugin) }
 		plugin_send_event(v.plugin, v.ev, app.cfg.position)
 	case Open_Menu:
+		dismiss_popups(app, nil)
 		menu_open(app, v.bar_out, v.plugin, v.rect)
+	case Dismiss_All:
+		dismiss_popups(app, nil)
 	case Menu_Pick:
 		if popup_alive(app, v.popup) { menu_pick(app, v.popup, v.index) }
 	case Menu_Dismiss:
@@ -658,6 +675,10 @@ render_bar :: proc(app: ^App, b: ^Bar) {
 	// Any left/middle press on the bar closes an open menu.
 	if app.menu != nil && (w.input.mouse_pressed[.Left] || w.input.mouse_pressed[.Middle]) {
 		append(&app.msgs, Msg(Menu_Dismiss{popup = app.menu}))
+	}
+	if !b.over_item && (w.input.mouse_pressed[.Left] || w.input.mouse_pressed[.Middle] ||
+	                    w.input.mouse_pressed[.Right]) {
+		append(&app.msgs, Msg(Dismiss_All{}))
 	}
 	check_double_click(app, b)
 	skald.input_begin(w) // reset input edges for the next frame

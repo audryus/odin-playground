@@ -240,6 +240,7 @@ use these values to look like Omarchy.
 {"event": "scroll", "direction": "up", "monitor": "DP-1", "bar": {...}, "item": {...}}
 {"event": "hover", "hovered": true, "monitor": "DP-1", "bar": {...}, "item": {...}}
 {"event": "menu", "id": "calendar", "monitor": "DP-1"}
+{"event": "dismiss"}
 ```
 
 - `button`: `left`, `middle` or `right`. `direction`: `up` or `down`.
@@ -252,6 +253,11 @@ use these values to look like Omarchy.
   `item` is the hovered zone's rect, to place a hover popup. Moving to another
   segment of the item sends `hovered: true` again with the new `segment`. While
   the plugin's right-click menu is open it gets `hovered: false`.
+
+- `dismiss`: close any popup you have open. Only one popup is open at a time:
+  this goes to every other plugin when an item is clicked, and to all of them
+  when the right-click menu opens or an empty part of the bar is clicked. The
+  kit closes its `Panel`/`HoverPopup`s by itself (`on_dismiss` for the rest).
 
 Reading stdin is optional: if the plugin does not read and the pipe fills up,
 lines are dropped (a plugin never freezes the bar).

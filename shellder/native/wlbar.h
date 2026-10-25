@@ -18,6 +18,7 @@ enum {
 	WB_EV_MOTION,        // out, x, y
 	WB_EV_BUTTON,        // out, a=0 left / 1 middle / 2 right, b=pressed
 	WB_EV_AXIS,          // out, x=horizontal, y=vertical (positive = down)
+	WB_EV_KEY,           // out (the focused surface), a=evdev key code, b=pressed
 };
 
 typedef struct {
@@ -35,6 +36,8 @@ enum { WB_POS_BOTTOM = 0, WB_POS_TOP, WB_POS_LEFT, WB_POS_RIGHT };
 enum {
 	WB_POPUP_TOOLTIP = 0, // sized w x h, no input (pointer passes through)
 	WB_POPUP_MENU    = 1, // covers the output's usable area, takes the pointer
+	WB_POPUP_PANEL   = 2, // like MENU, and takes the keyboard: exclusive until
+	                      // it gets the focus, then on-demand (KeyboardPanel.qml)
 };
 enum { WB_EDGE_TOP = 1, WB_EDGE_BOTTOM = 2, WB_EDGE_LEFT = 4, WB_EDGE_RIGHT = 8 };
 

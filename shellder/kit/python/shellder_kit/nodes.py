@@ -1,5 +1,10 @@
-"""Panels described as data and drawn by someone else — Shellder itself
-(manifest barWidget.panel: "skald"), with no GUI toolkit in the plugin.
+"""Panels described as data and drawn by someone else. The manifest's
+barWidget.panel picks who, with no change to the plugin:
+
+  "skald"    Shellder itself: no GUI toolkit in the plugin at all
+  "process"  a GTK child process born on open and gone on close
+             (shellder_kit.panel_process): GTK costs memory only while open
+  "plugin"   GTK in the plugin's own process (shellder_kit.gtk_nodes)
 
     from shellder_kit import nodes as N
 
@@ -20,6 +25,12 @@
 Node types: hero, section, separator, slider, row, label, group (same look
 as the kit's GTK widgets). See Shellder's README for every field.
 """
+
+import json
+import os
+import sys
+
+from gi.repository import Gio, GLib
 
 
 def hero(icon, title, meta="", switch=None):
@@ -71,8 +82,9 @@ def group(items, spacing=6):
 
 
 class SkaldPanel:
-    """A panel Shellder draws. One per plugin; closed by Shellder on a click
-    outside it or on another item (then on_close runs)."""
+    """A panel described as nodes, drawn as the manifest's barWidget.panel
+    says. One per plugin; closed on a click outside it or on another item
+    (then on_close runs)."""
 
     def __init__(self, plugin, width=340, spacing=14):
         self.plugin = plugin
@@ -80,6 +92,10 @@ class SkaldPanel:
         self.spacing = spacing
         self.opened = False
         self._sent = None
+        self._mode = None   # the mode it was opened in
+        self._gtk = None    # "plugin": the gtk_nodes.NodesPanel
+        self._child = None  # "process": the Gio.Subprocess
+        self._theme = None  # theme data the drawer last got
         plugin._popups.append(self)
         plugin._panel = self
 
@@ -107,33 +123,178 @@ class SkaldPanel:
             self.open(event)
 
     def open(self, event=None):
+        mode = self.plugin.panel_mode
+        if mode not in ("skald", "process", "plugin"):
+            mode = "skald"
+        self._mode = mode
         self.opened = True
         self._sent = None
-        self.refresh()
+        spec = self._spec()
+        if mode == "skald":
+            self._sent = spec
+            self.plugin._write({"panel": spec})
+        elif mode == "process":
+            if not self._spawn(event or {}, spec):
+                self.opened = False
+                return
+        else:
+            if not self._open_gtk(event or {}, spec):
+                self.opened = False
+                return
         self.on_open()
 
     def close(self):
         if not self.opened:
             return
-        self.opened = False
-        self._sent = None
-        self.plugin._write({"panel": None})
-        self.on_close()
+        if self._mode == "skald":
+            self.plugin._write({"panel": None})
+        elif self._mode == "process":
+            self._stop_child()
+        elif self._gtk is not None:
+            gtk, self._gtk = self._gtk, None
+            gtk.close()  # its on_closed finds self._gtk gone: no second on_close
+        self._closed()
 
     def refresh(self):
         """Send the content again (only if it changed)."""
         if not self.opened:
             return
-        spec = {"width": self.width, "spacing": self.spacing, "items": [i for i in self.items() if i]}
-        if spec != self._sent:
-            self._sent = spec
+        spec = self._spec()
+        if spec == self._sent:
+            return
+        self._sent = spec
+        if self._mode == "skald":
             self.plugin._write({"panel": spec})
+        elif self._mode == "process":
+            self._sync_theme()
+            self._to_child({"spec": spec})
+        elif self._gtk is not None:
+            self._sync_theme()
+            self._gtk.set_spec(spec)
 
     def theme_changed(self):
-        pass  # Shellder draws it with the current theme
+        if self.opened:
+            self._sync_theme()
 
     def dismiss(self):
-        self._closed_by_shellder()
+        """Another bar item was clicked. Shellder closes its own drawing; the
+        other modes close here."""
+        if self._mode == "skald":
+            self._closed()
+        else:
+            self.close()
+
+    # ---- internals -----------------------------------------------------------------
+
+    def _spec(self):
+        return {"width": self.width, "spacing": self.spacing, "items": [i for i in self.items() if i]}
+
+    def _namespace(self):
+        return "shellder-panel-" + self.plugin.name()
+
+    def _closed(self):
+        if self.opened:
+            self.opened = False
+            self._sent = None
+            self.on_close()
+
+    def _sync_theme(self):
+        raw = self.plugin.theme.raw
+        if raw == self._theme:
+            return
+        self._theme = raw
+        if self._mode == "process":
+            self._to_child({"theme": raw})
+        elif self._gtk is not None:
+            self._gtk.theme_changed()
+
+    # "plugin": GTK in this process.
+
+    def _open_gtk(self, event, spec):
+        from . import gtk_nodes
+
+        def closed():
+            if self._gtk is not None:  # closed by GTK (Esc, a click outside)
+                self._gtk = None
+                self._closed()
+        if self._gtk is None:
+            self._gtk = gtk_nodes.NodesPanel(self.plugin, self._namespace(), self.on_action, closed)
+            self.plugin._popups.remove(self._gtk)  # dismissed through this panel
+        self._gtk.spec = spec
+        self._theme = self.plugin.theme.raw
+        self._sent = spec
+        self._gtk.open(event)
+        return self._gtk.opened
+
+    # "process": GTK in a child that lives while the panel is open.
+
+    def _spawn(self, event, spec):
+        kit = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+        launcher = Gio.SubprocessLauncher.new(Gio.SubprocessFlags.STDIN_PIPE | Gio.SubprocessFlags.STDOUT_PIPE)
+        path = os.environ.get("PYTHONPATH")
+        launcher.setenv("PYTHONPATH", kit + (os.pathsep + path if path else ""), True)
+        try:
+            child = launcher.spawnv([sys.executable, "-u", "-m", "shellder_kit.panel_process",
+                                     self._namespace()])
+        except GLib.Error as e:
+            print("%s: panel process: %s" % (self.plugin.name(), e), file=sys.stderr)
+            return False
+        self._child = child
+        self._theme = self.plugin.theme.raw
+        self._sent = spec
+        self._to_child({"open": {"event": event, "theme": self._theme, "spec": spec}})
+        stream = Gio.DataInputStream.new(child.get_stdout_pipe())
+
+        def read(s, res):
+            try:
+                line, _ = s.read_line_finish_utf8(res)
+            except GLib.Error:
+                line = None
+            if self._child is not child:
+                return  # a child we already let go
+            if line is None:
+                self._child = None  # exited (or crashed): the panel is gone
+                self._closed()
+                return
+            self._from_child(line)
+            if self._child is child:
+                s.read_line_async(GLib.PRIORITY_DEFAULT, None, read)
+        stream.read_line_async(GLib.PRIORITY_DEFAULT, None, read)
+        return True
+
+    def _from_child(self, line):
+        try:
+            msg = json.loads(line)
+        except ValueError:
+            return
+        action = msg.get("action")
+        if action == "closed":
+            self._child = None  # it exits by itself
+            self._closed()
+        elif action in ("click", "change", "toggle"):
+            self.on_action(action, msg.get("id", ""), msg.get("value"))
+
+    def _to_child(self, obj):
+        if self._child is None:
+            return
+        data = (json.dumps(obj, ensure_ascii=False) + "\n").encode()
+        try:
+            self._child.get_stdin_pipe().write_all(data, None)
+        except GLib.Error:
+            pass  # exiting: its stdout EOF closes the panel
+
+    def _stop_child(self):
+        child, self._child = self._child, None
+        if child is None:
+            return
+        try:
+            pipe = child.get_stdin_pipe()
+            pipe.write_all(b'{"close": true}\n', None)
+            pipe.close(None)
+        except GLib.Error:
+            pass
+        # It exits at once; make sure a stuck one does not linger.
+        GLib.timeout_add(2000, lambda: child.force_exit() and False)
 
     # ---- events from Shellder --------------------------------------------------------
 
@@ -145,7 +306,5 @@ class SkaldPanel:
             self.on_action(action, ev.get("id", ""), ev.get("value"))
 
     def _closed_by_shellder(self):
-        if self.opened:
-            self.opened = False
-            self._sent = None
-            self.on_close()
+        if self._mode == "skald":
+            self._closed()

@@ -59,7 +59,8 @@ Hover_Mode :: enum { Tooltip, Event, None }
 // in the "config" event so the plugin (or the kit) knows how to show its panel:
 //   "plugin" (default) the plugin shows its own windows
 //   "skald"            the plugin sends {"panel": ...} and Shellder draws it
-//   "process"          the plugin shows it from a short-lived child process
+//   "process"          the plugin shows it from a child process that lives
+//                      while the panel is open (the Python kit's SkaldPanel)
 Panel_Mode :: enum { Plugin, Skald, Process }
 PANEL_MODE_NAMES := [Panel_Mode]string{ .Plugin = "plugin", .Skald = "skald", .Process = "process" }
 
@@ -335,7 +336,7 @@ plugin_reload :: proc(set: ^Plugin_Set, p: ^Plugin) -> bool {
 	}
 	p.id, p.name, p.argv = q.id, q.name, q.argv
 	p.manifest_icon, p.default_section = q.manifest_icon, q.default_section
-	p.hover_mode = q.hover_mode
+	p.hover_mode, p.panel_mode = q.hover_mode, q.panel_mode
 	menu_free(&p.menu); delete(p.menu)
 	p.menu = q.menu
 	q.menu = {}

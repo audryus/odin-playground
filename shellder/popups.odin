@@ -75,7 +75,8 @@ popup_by_id :: proc(app: ^App, id: i32) -> ^Popup {
 // ---- lifecycle ----------------------------------------------------------------
 
 popup_new :: proc(app: ^App, kind: Popup_Kind, bar_out: i32, edges, mt, mr, mb, ml, w, h: i32) -> ^Popup {
-	id := wb_popup_open(bar_out, i32(kind == .Tooltip ? WB_POPUP_TOOLTIP : WB_POPUP_MENU), edges, mt, mr, mb, ml, w, h)
+	wk := kind == .Tooltip ? WB_POPUP_TOOLTIP : kind == .Panel ? WB_POPUP_PANEL : WB_POPUP_MENU
+	id := wb_popup_open(bar_out, i32(wk), edges, mt, mr, mb, ml, w, h)
 	if id < 0 { return nil }
 	p := new(Popup)
 	p.id, p.kind, p.bar_out = id, kind, bar_out

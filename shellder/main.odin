@@ -44,7 +44,7 @@ Plugin_Input :: struct {
 
 // Dismiss_All: a click on an empty part of the bar closes every popup.
 Dismiss_All :: struct {}
-// Panel_Dismiss: a press outside a Shellder-drawn panel's card.
+// Panel_Dismiss: a press outside a Shellder-drawn panel's card, or Esc.
 Panel_Dismiss :: struct { popup: ^Popup }
 
 // dismiss_popups sends {"event":"dismiss"} to every plugin except `keep`
@@ -627,6 +627,11 @@ handle_popup_event :: proc(app: ^App, ev: WB_Event) {
 		if w != nil {
 			btn: skald.Mouse_Button = ev.a == 0 ? .Left : ev.a == 1 ? .Middle : .Right
 			skald.input_feed_pointer_button(w, btn, ev.b != 0)
+		}
+	case .Key:
+		// Esc closes a Shellder-drawn panel, as in Omarchy's KeyboardPanel.
+		if ev.b != 0 && ev.a == KEY_ESC && p.kind == .Panel {
+			append(&app.msgs, Msg(Panel_Dismiss{popup = p}))
 		}
 	}
 }

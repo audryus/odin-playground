@@ -19,6 +19,7 @@ WB_MAX_POPUPS  :: 8
 
 WB_POPUP_TOOLTIP :: 0
 WB_POPUP_MENU    :: 1
+WB_POPUP_PANEL   :: 2
 WB_EDGE_TOP    :: 1
 WB_EDGE_BOTTOM :: 2
 WB_EDGE_LEFT   :: 4
@@ -33,7 +34,10 @@ WB_Event_Type :: enum i32 {
 	Motion,
 	Button,
 	Axis,
+	Key,
 }
+
+KEY_ESC :: 1 // evdev
 
 WB_Event :: struct {
 	type: WB_Event_Type,

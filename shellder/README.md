@@ -159,7 +159,7 @@ message per line**.
 | `barWidget.defaultSection`    | no  | `left`, `center` or `right` (default `right`); on a vertical bar: top, middle, bottom |
 | `barWidget.hover`             | no  | What hovering does: `"tooltip"` (default) — Shellder shows the item/segment `tooltip`; `"event"` — no Shellder tooltip, the plugin gets `hover` events and shows its own popup; `"none"` — nothing. `hover` events are sent in both `tooltip` and `event` modes |
 | `barWidget.menu`              | no  | Right-click menu drawn by Shellder (see below). When set, the right click opens it instead of reaching the plugin |
-| `barWidget.panel`             | no  | Who draws the plugin's panel: `"plugin"` (default) — the plugin's own window; `"skald"` — the plugin sends `{"panel": ...}` and Shellder draws it (see *Panels drawn by Shellder*); `"process"` — reserved for a short-lived panel process. Forwarded to the plugin in `config` as `"panel"` |
+| `barWidget.panel`             | no  | Who draws the plugin's panel: `"plugin"` (default) — the plugin's own window; `"skald"` — the plugin sends `{"panel": ...}` and Shellder draws it (see *Panels drawn by Shellder*); `"process"` — a child process that exists only while the panel is open (the Python kit's `SkaldPanel` draws the nodes with GTK there). Forwarded to the plugin in `config` as `"panel"` |
 | `name`, `version`, `author`, `description`, `schemaVersion`, `barWidget.displayName`, `barWidget.category` | no | Informational |
 
 The process runs with the plugin folder as `cwd` and gets these variables:
@@ -363,10 +363,31 @@ every state change while open). Shellder sends back:
 
 `change` comes while a slider is dragged (at most every 40 ms) and once more
 on release; `closed` when Shellder closed it (press outside the card, another
-item clicked, the bar's empty area). A click on the item itself reaches the
-plugin as usual: toggle by sending `{"panel": null}`. Not yet: keyboard input
-and scrolling inside the panel. `shellder_kit.nodes` builds the nodes and
+item clicked, the bar's empty area, `Esc`). The panel takes the keyboard
+focus when it opens (exclusive until focused, then on-demand, like
+KeyboardPanel.qml) so `Esc` closes it. A click on the item itself reaches the
+plugin as usual: toggle by sending `{"panel": null}`. Not yet: other keys and
+scrolling inside the panel. `shellder_kit.nodes` builds the nodes and
 handles the events (`SkaldPanel`).
+
+#### The same panel in the other modes
+
+A `SkaldPanel` also works with `"process"` and `"plugin"`: the plugin code
+does not change, only the manifest. Both draw the nodes with GTK4
+(`shellder_kit.gtk_nodes`, same look) and send back the same actions:
+
+| Mode | Where GTK runs | Measured with shellder-audio (PSS) |
+|---|---|---|
+| `"skald"` | nowhere: Shellder draws it | plugin 15.6 MiB, open or closed |
+| `"process"` | `python3 -m shellder_kit.panel_process`, started on open and exiting on close | plugin 15.6 MiB; +35 MiB child only while open; opens ~135 ms later than `"skald"` |
+| `"plugin"` | the plugin's process | 15.6 MiB until the first open, 36 MiB open, 32.5 MiB after closing (GTK stays loaded) |
+
+The child speaks JSON lines over its stdin/stdout: `{"open": {"event",
+"theme", "spec"}}`, then `{"spec": ...}` / `{"theme": ...}` updates and
+`{"close": true}` (or EOF); it answers with `{"action": "click" | "change" |
+"toggle", "id", "value"}` and `{"action": "closed"}` when closed on its own
+side (Esc, a click outside). Updates with the same structure change the
+widgets in place, so a slider being dragged keeps its grab.
 
 ### Popups and panels
 

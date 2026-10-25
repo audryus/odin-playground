@@ -3,6 +3,7 @@
 
 #include <errno.h>
 #include <stdio.h>
+#include <unistd.h>
 #include <stdlib.h>
 #include <string.h>
 #include <wayland-client.h>
@@ -33,6 +34,7 @@ typedef struct {
 	struct wl_surface            *surface;
 	struct zwlr_layer_surface_v1 *layer;
 	int                           closed;
+	int                           kb_exclusive; // WB_POPUP_PANEL until its first keyboard enter
 } Popup;
 
 static struct {
@@ -42,6 +44,7 @@ static struct {
 	struct wl_shm              *shm;
 	struct wl_seat             *seat;
 	struct wl_pointer          *pointer;
+	struct wl_keyboard         *keyboard;
 	struct zwlr_layer_shell_v1 *layer_shell;
 
 	struct wl_cursor_theme *cursor_theme;
@@ -55,10 +58,11 @@ static struct {
 	Output outputs[WB_MAX_OUTPUTS];
 	Popup  popups[WB_MAX_POPUPS];
 	int    pointer_out;
+	int    keyboard_out; // surface with the keyboard focus (-1: none of ours)
 
 	wb_event *events;
 	int       ev_len, ev_cap, ev_head;
-} S = {.pointer_out = -1};
+} S = {.pointer_out = -1, .keyboard_out = -1};
 
 static void push(wb_event ev) {
 	if (S.ev_len == S.ev_cap) {
@@ -321,6 +325,56 @@ static const struct wl_pointer_listener pointer_listener = {
 	.axis_discrete = ptr_axis_discrete,
 };
 
+// ---- wl_keyboard -----------------------------------------------------------
+//
+// Raw evdev key codes only (no keymap): enough for Esc and the arrows.
+
+static void kb_keymap(void *d, struct wl_keyboard *k, uint32_t format, int32_t fd, uint32_t size) {
+	(void)d; (void)k; (void)format; (void)size;
+	close(fd);
+}
+static void kb_enter(void *d, struct wl_keyboard *k, uint32_t serial, struct wl_surface *s,
+                     struct wl_array *keys) {
+	(void)d; (void)k; (void)serial; (void)keys;
+	S.keyboard_out = out_by_surface(s);
+	Popup *p = popup_by_id(S.keyboard_out);
+	if (p && p->kb_exclusive) {
+		// Focus taken: keeping it exclusive would make Hyprland send it all
+		// pointer input too.
+		p->kb_exclusive = 0;
+		zwlr_layer_surface_v1_set_keyboard_interactivity(p->layer,
+			ZWLR_LAYER_SURFACE_V1_KEYBOARD_INTERACTIVITY_ON_DEMAND);
+		wl_surface_commit(p->surface);
+	}
+}
+static void kb_leave(void *d, struct wl_keyboard *k, uint32_t serial, struct wl_surface *s) {
+	(void)d; (void)k; (void)serial; (void)s;
+	S.keyboard_out = -1;
+}
+static void kb_key(void *d, struct wl_keyboard *k, uint32_t serial, uint32_t t, uint32_t key,
+                   uint32_t state) {
+	(void)d; (void)k; (void)serial; (void)t;
+	if (S.keyboard_out < 0) return;
+	push((wb_event){.type = WB_EV_KEY, .out = S.keyboard_out, .a = (int32_t)key,
+	                .b = state == WL_KEYBOARD_KEY_STATE_PRESSED});
+}
+static void kb_modifiers(void *d, struct wl_keyboard *k, uint32_t serial, uint32_t dep,
+                         uint32_t lat, uint32_t lock, uint32_t group) {
+	(void)d; (void)k; (void)serial; (void)dep; (void)lat; (void)lock; (void)group;
+}
+static void kb_repeat_info(void *d, struct wl_keyboard *k, int32_t rate, int32_t delay) {
+	(void)d; (void)k; (void)rate; (void)delay;
+}
+
+static const struct wl_keyboard_listener keyboard_listener = {
+	.keymap      = kb_keymap,
+	.enter       = kb_enter,
+	.leave       = kb_leave,
+	.key         = kb_key,
+	.modifiers   = kb_modifiers,
+	.repeat_info = kb_repeat_info,
+};
+
 // ---- wl_seat ---------------------------------------------------------------
 
 static void seat_caps(void *d, struct wl_seat *seat, uint32_t caps) {
@@ -332,6 +386,15 @@ static void seat_caps(void *d, struct wl_seat *seat, uint32_t caps) {
 	} else if (!has && S.pointer) {
 		wl_pointer_release(S.pointer);
 		S.pointer = NULL;
+	}
+	int has_kb = (caps & WL_SEAT_CAPABILITY_KEYBOARD) != 0;
+	if (has_kb && !S.keyboard) {
+		S.keyboard = wl_seat_get_keyboard(seat);
+		wl_keyboard_add_listener(S.keyboard, &keyboard_listener, NULL);
+	} else if (!has_kb && S.keyboard) {
+		wl_keyboard_release(S.keyboard);
+		S.keyboard = NULL;
+		S.keyboard_out = -1;
 	}
 }
 static void seat_name(void *d, struct wl_seat *s, const char *n) { (void)d; (void)s; (void)n; }
@@ -487,7 +550,7 @@ int32_t wb_popup_open(int32_t out, int32_t kind, int32_t edges,
 	}
 	p->layer = zwlr_layer_shell_v1_get_layer_surface(S.layer_shell, p->surface,
 		S.outputs[out].output, ZWLR_LAYER_SHELL_V1_LAYER_OVERLAY,
-		kind == WB_POPUP_TOOLTIP ? "shellder-tooltip" : "shellder-menu");
+		kind == WB_POPUP_TOOLTIP ? "shellder-tooltip" : kind == WB_POPUP_PANEL ? "shellder-panel" : "shellder-menu");
 	uint32_t anchor = 0;
 	if (edges & WB_EDGE_TOP)    anchor |= ZWLR_LAYER_SURFACE_V1_ANCHOR_TOP;
 	if (edges & WB_EDGE_BOTTOM) anchor |= ZWLR_LAYER_SURFACE_V1_ANCHOR_BOTTOM;
@@ -498,8 +561,10 @@ int32_t wb_popup_open(int32_t out, int32_t kind, int32_t edges,
 	zwlr_layer_surface_v1_set_size(p->layer, (uint32_t)(w > 0 ? w : 0), (uint32_t)(h > 0 ? h : 0));
 	// Exclusive zone 0: placed inside the usable area, so it never covers the bar.
 	zwlr_layer_surface_v1_set_exclusive_zone(p->layer, 0);
-	zwlr_layer_surface_v1_set_keyboard_interactivity(p->layer,
-		ZWLR_LAYER_SURFACE_V1_KEYBOARD_INTERACTIVITY_NONE);
+	p->kb_exclusive = kind == WB_POPUP_PANEL;
+	zwlr_layer_surface_v1_set_keyboard_interactivity(p->layer, p->kb_exclusive
+		? ZWLR_LAYER_SURFACE_V1_KEYBOARD_INTERACTIVITY_EXCLUSIVE
+		: ZWLR_LAYER_SURFACE_V1_KEYBOARD_INTERACTIVITY_NONE);
 	zwlr_layer_surface_v1_add_listener(p->layer, &popup_listener, p);
 	wl_surface_commit(p->surface);
 	wl_display_flush(S.display);
@@ -510,6 +575,7 @@ void wb_popup_destroy(int32_t id) {
 	Popup *p = popup_by_id(id);
 	if (!p) return;
 	if (S.pointer_out == id) S.pointer_out = -1;
+	if (S.keyboard_out == id) S.keyboard_out = -1;
 	if (p->layer)   zwlr_layer_surface_v1_destroy(p->layer);
 	if (p->surface) wl_surface_destroy(p->surface);
 	memset(p, 0, sizeof *p);

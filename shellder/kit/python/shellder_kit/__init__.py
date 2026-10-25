@@ -10,6 +10,8 @@ Shellder exports SHELLDER_KIT to every plugin. The kit covers:
   Theme   the Omarchy theme from the "config" event, as GTK CSS
   Panel   popup following Omarchy's KeyboardPanel (shellder_kit.panel;
           imports GTK only when used)
+  nodes   panels described as data (SkaldPanel), drawn by Shellder, by a
+          GTK child process or by GTK in the plugin, as the manifest says
 """
 
 from .plugin import Plugin

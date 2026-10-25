@@ -159,6 +159,7 @@ message per line**.
 | `barWidget.defaultSection`    | no  | `left`, `center` or `right` (default `right`); on a vertical bar: top, middle, bottom |
 | `barWidget.hover`             | no  | What hovering does: `"tooltip"` (default) — Shellder shows the item/segment `tooltip`; `"event"` — no Shellder tooltip, the plugin gets `hover` events and shows its own popup; `"none"` — nothing. `hover` events are sent in both `tooltip` and `event` modes |
 | `barWidget.menu`              | no  | Right-click menu drawn by Shellder (see below). When set, the right click opens it instead of reaching the plugin |
+| `barWidget.panel`             | no  | Who draws the plugin's panel: `"plugin"` (default) — the plugin's own window; `"skald"` — the plugin sends `{"panel": ...}` and Shellder draws it (see *Panels drawn by Shellder*); `"process"` — reserved for a short-lived panel process. Forwarded to the plugin in `config` as `"panel"` |
 | `name`, `version`, `author`, `description`, `schemaVersion`, `barWidget.displayName`, `barWidget.category` | no | Informational |
 
 The process runs with the plugin folder as `cwd` and gets these variables:
@@ -192,6 +193,7 @@ Each line is an update. It can be a JSON object:
 | `monitor`  | Output connector (`"DP-1"`): the update applies only to that output's bar. Without it, it applies to every bar that has not received its own |
 | `settings` | Settings to save in the plugin's `shell.json` entry (`null` deletes a key). Shellder saves them and sends a new `config` |
 | `menu`     | Replaces the right-click menu at runtime (same format as `barWidget.menu`; `[]` disables it) |
+| `panel`    | Opens or updates the Shellder-drawn panel (`{"width": 380, "items": [...]}`), `null` closes it (see *Panels drawn by Shellder*) |
 
 Missing fields keep their previous value. **Any line that does not start with
 `{` becomes the `text`**, so a script that just `echo`s already works.
@@ -319,6 +321,52 @@ Mine().run()
 - `on_menu(ev)` receives right-click menu entries without `exec`.
 - Widgets with the look of the Omarchy components: `hero`, `section`,
   `separator`, `row`, `action_button`, `button`, `switch`, `slider`.
+
+### Panels drawn by Shellder
+
+With `"panel": "skald"` in the manifest the plugin only describes its panel
+and Shellder draws it with the Omarchy theme, so the plugin needs no GUI
+toolkit (shellder-audio uses it: ~16 MiB instead of ~30 MiB with GTK).
+
+```json
+{"panel": {"width": 380, "spacing": 14, "items": [
+  {"type": "hero", "icon": "\uf028", "title": "Audio", "meta": "Steady groove",
+   "switch": {"id": "master", "on": true}},
+  {"type": "separator"},
+  {"type": "group", "spacing": 6, "items": [
+    {"type": "section", "text": "OUTPUT", "value": "57%"},
+    {"type": "slider", "id": "volume", "value": 0.57, "min": 0, "max": 1, "step": 0.01},
+    {"type": "row", "id": "sink:usb", "icon": "\uf025", "text": "USB Audio Device",
+     "trailing": "󰄬", "selected": true}]}]}}
+```
+
+| Node | Fields |
+|---|---|
+| `hero` | `icon` (display size), `title` (bold), `meta` (caption, upper case), `switch: {"id", "on"}` on the right |
+| `section` | `text` and an optional right-aligned `value` (caption, bold, dimmed) |
+| `separator` | a hairline |
+| `slider` | `id`, `value`, `min` (0), `max` (1), `step` (0 = continuous) |
+| `row` | `text`, `id` (clickable when set), `icon`, `value` (small, dimmed), `trailing` (glyph on the right), `selected`, `disabled`, `action: {"id", "icon"}` (an icon button before the text), `plain` (a line of content: no padding, no hover) |
+| `label` | `text`, `style`: `""`, `dim`, `caption`, `small`, `title`, `bold` |
+| `group` | `items` with their own `spacing` (default 6) |
+
+The panel opens next to the item the plugin's last click came from, on the
+same output, and updates whenever the plugin sends `panel` again (send it on
+every state change while open). Shellder sends back:
+
+```json
+{"event": "panel", "action": "click",  "id": "sink:usb"}
+{"event": "panel", "action": "change", "id": "volume", "value": 0.6}
+{"event": "panel", "action": "toggle", "id": "master", "value": false}
+{"event": "panel", "action": "closed"}
+```
+
+`change` comes while a slider is dragged (at most every 40 ms) and once more
+on release; `closed` when Shellder closed it (press outside the card, another
+item clicked, the bar's empty area). A click on the item itself reaches the
+plugin as usual: toggle by sending `{"panel": null}`. Not yet: keyboard input
+and scrolling inside the panel. `shellder_kit.nodes` builds the nodes and
+handles the events (`SkaldPanel`).
 
 ### Popups and panels
 

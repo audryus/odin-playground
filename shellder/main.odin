@@ -23,6 +23,7 @@ Msg :: union {
 	Plugin_Input,
 	Open_Menu,
 	Dismiss_All,
+	Panel_Dismiss,
 	Menu_Pick,
 	Menu_Dismiss,
 }
@@ -36,16 +37,21 @@ Menu_Pick    :: struct { popup: ^Popup, index: int }
 Menu_Dismiss :: struct { popup: ^Popup }
 
 Plugin_Input :: struct {
-	plugin: ^Plugin,
+	plugin:  ^Plugin,
+	bar_out: i32, // the bar the click came from (a "skald" panel opens there)
 	ev:     Plugin_Event, // ev.monitor lives in temp_allocator: update runs before free_all
 }
 
 // Dismiss_All: a click on an empty part of the bar closes every popup.
 Dismiss_All :: struct {}
+// Panel_Dismiss: a press outside a Shellder-drawn panel's card.
+Panel_Dismiss :: struct { popup: ^Popup }
 
 // dismiss_popups sends {"event":"dismiss"} to every plugin except `keep`
-// (the one being clicked, which handles its own popup).
+// (the one being clicked, which handles its own popup) and closes the
+// Shellder-drawn panel unless it is keep's.
 dismiss_popups :: proc(app: ^App, keep: ^Plugin) {
+	if app.panel != nil && app.panel.plugin != keep { panel_dismiss(app, app.panel) }
 	for p in app.plugins.plugins {
 		if p != keep { plugin_send_line(p, `{"event":"dismiss"}` + "\n") }
 	}
@@ -57,13 +63,18 @@ update :: proc(app: ^App, m: Msg) {
 	switch v in m {
 	case Plugin_Input:
 		// One popup at a time: a click on an item closes the others' popups.
-		if v.ev.kind == .Click { dismiss_popups(app, v.plugin) }
+		if v.ev.kind == .Click {
+			dismiss_popups(app, v.plugin)
+			v.plugin.click_out, v.plugin.click_rect = v.bar_out, v.ev.item
+		}
 		plugin_send_event(v.plugin, v.ev, app.cfg.position)
 	case Open_Menu:
 		dismiss_popups(app, nil)
 		menu_open(app, v.bar_out, v.plugin, v.rect)
 	case Dismiss_All:
 		dismiss_popups(app, nil)
+	case Panel_Dismiss:
+		if popup_alive(app, v.popup) { panel_dismiss(app, v.popup) }
 	case Menu_Pick:
 		if popup_alive(app, v.popup) { menu_pick(app, v.popup, v.index) }
 	case Menu_Dismiss:
@@ -109,6 +120,7 @@ App :: struct {
 	popups:      [WB_MAX_POPUPS]^Popup,
 	tooltip:     ^Popup,
 	menu:        ^Popup,
+	panel:       ^Popup, // a plugin's Shellder-drawn panel (panels.odin)
 	hover_now:   Hover_Target, // what the pointer is over (set while drawing)
 	hover_shown: Hover_Target, // target the tooltip delay is running for
 	hover_since: time.Tick,
@@ -116,6 +128,7 @@ App :: struct {
 	pending_theme: bool,   // re-apply the theme next cycle (transparency changed)
 
 	font:        skald.Font,
+	font_bold:   skald.Font, // the family's Bold file, if there is one (panel titles)
 	font_file:   string, // file loaded into `font`
 	em_factor:   f32,    // Omarchy px size -> Skald size (font_em_factor)
 	font_data:   [dynamic][]u8, // bytes of every loaded font; they live as long as the renderer
@@ -172,8 +185,8 @@ sync_plugins :: proc(app: ^App) {
 // config_line_for builds the plugin's "config" event: bar, theme and the
 // settings from its shell.json entry.
 config_line_for :: proc(app: ^App, p: ^Plugin) -> string {
-	return fmt.tprintf(`{{"event":"config","bar":{{"position":"%s","size":%d}},"theme":%s,"settings":%s}}` + "\n",
-		POSITION_NAMES[app.cfg.position], app.size, app.theme_json,
+	return fmt.tprintf(`{{"event":"config","bar":{{"position":"%s","size":%d}},"panel":"%s","theme":%s,"settings":%s}}` + "\n",
+		POSITION_NAMES[app.cfg.position], app.size, PANEL_MODE_NAMES[p.panel_mode], app.theme_json,
 		config_entry_settings_json(&app.cfg, p.id))
 }
 
@@ -398,7 +411,7 @@ view_plugin :: proc(app: ^App, p: ^Plugin, bar: ^Bar, ctx: ^skald.Ctx(Msg)) -> (
 			delete(old)
 			p.hovered_on[bar.name] = strings.clone(state)
 		}
-		skald.send(ctx, Plugin_Input{plugin = p, ev = Plugin_Event{
+		skald.send(ctx, Plugin_Input{plugin = p, bar_out = bar.out, ev = Plugin_Event{
 			kind = .Hover, dir = any_hover ? 1 : 0, monitor = bar.name, segment = hover_seg,
 			item = hover_rect, bar_size = bar.win.size_logical,
 		}})
@@ -438,13 +451,13 @@ clickable_zone :: proc(app: ^App, ctx: ^skald.Ctx(Msg), p: ^Plugin, bar: ^Bar, i
 		{
 			e := ev
 			e.kind, e.button = .Click, b
-			skald.send(ctx, Plugin_Input{plugin = p, ev = e})
+			skald.send(ctx, Plugin_Input{plugin = p, bar_out = bar.out, ev = e})
 		}
 	}
 	if hovered && ctx.input.scroll.y != 0 {
 		e := ev
 		e.kind, e.dir = .Scroll, ctx.input.scroll.y < 0 ? -1 : 1
-		skald.send(ctx, Plugin_Input{plugin = p, ev = e})
+		skald.send(ctx, Plugin_Input{plugin = p, bar_out = bar.out, ev = e})
 	}
 	return z
 }
@@ -511,6 +524,16 @@ load_font :: proc(app: ^App) {
 	app.em_factor = font_em_factor(data)
 	app.font = skald.font_load(&app.r, app.omarchy.font_family, data)
 	skald.font_add_fallback(&app.r, app.font, skald.font_default(&app.r))
+	// Bold: the same file name with Bold for Regular (JetBrainsMono Nerd Font).
+	app.font_bold = 0
+	if strings.contains(file, "Regular") {
+		bold_file, _ := strings.replace_all(file, "Regular", "Bold", context.temp_allocator)
+		if bold, berr := os.read_entire_file(bold_file, context.allocator); berr == nil {
+			append(&app.font_data, bold)
+			app.font_bold = skald.font_load(&app.r, fmt.tprintf("%s Bold", app.omarchy.font_family), bold)
+			skald.font_add_fallback(&app.r, app.font_bold, skald.font_default(&app.r))
+		}
+	}
 	delete(app.font_file)
 	app.font_file = strings.clone(file)
 	fmt.printfln("shellder: font %s (%s, em ×%.3f)", app.omarchy.font_family, file, app.em_factor)
@@ -552,6 +575,7 @@ bar_configure :: proc(app: ^App, out: i32, w, h: i32) {
 		app.r_ready = true
 		app.font_file = ""
 		app.font = 0
+		app.font_bold = 0
 		load_font(app)
 	} else if !skald.renderer_add_embedded_surface(&app.r, b.win, app.theme.color.bg) {
 		fmt.eprintfln("shellder: could not add the surface for %s", b.name)
@@ -737,6 +761,7 @@ main :: proc() {
 			if plugin_tick(p) { plugin_start(p, &app.cfg, config_line_for(app, p)) }
 		}
 		apply_settings_updates(app)
+		panels_sync(app)
 		plugins_reap()
 
 		if app.pending_theme {

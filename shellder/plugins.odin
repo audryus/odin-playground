@@ -55,6 +55,14 @@ Segment :: struct {
 //   "none"              neither
 Hover_Mode :: enum { Tooltip, Event, None }
 
+// Panel_Mode comes from the manifest's barWidget.panel; Shellder forwards it
+// in the "config" event so the plugin (or the kit) knows how to show its panel:
+//   "plugin" (default) the plugin shows its own windows
+//   "skald"            the plugin sends {"panel": ...} and Shellder draws it
+//   "process"          the plugin shows it from a short-lived child process
+Panel_Mode :: enum { Plugin, Skald, Process }
+PANEL_MODE_NAMES := [Panel_Mode]string{ .Plugin = "plugin", .Skald = "skald", .Process = "process" }
+
 // Menu_Item is one entry of the right-click menu, declared in the manifest's
 // barWidget.menu or replaced at runtime with {"menu": [...]} on stdout.
 // "exec" runs a shell command; otherwise {"event":"menu","id":...} goes to
@@ -129,6 +137,14 @@ Plugin :: struct {
 	manifest_icon:   string,
 	hover_mode:      Hover_Mode,
 	menu:            [dynamic]Menu_Item, // manifest menu, replaced by {"menu": ...}
+	panel_mode:      Panel_Mode,
+
+	// {"panel": ...} — the description of a Shellder-drawn panel (nil: closed),
+	// and where the last click came from (the panel opens next to it).
+	panel_spec:    json.Value,
+	panel_changed: bool,
+	click_out:     i32,
+	click_rect:    skald.Rect,
 
 	// displayed state (updated by the plugin): `view` applies to every bar; an
 	// update with "monitor" goes to per_monitor[monitor], which then replaces
@@ -342,6 +358,7 @@ plugin_free :: proc(p: ^Plugin) {
 	delete(p.line_buf)
 	for u in p.settings_updates { json.destroy_value(u) }
 	delete(p.settings_updates)
+	json.destroy_value(p.panel_spec)
 	free(p)
 }
 
@@ -468,6 +485,11 @@ manifest_load :: proc(dir: string) -> (p: ^Plugin, ok: bool) {
 	case "none":  p.hover_mode = .None
 	}
 	if arr, ok := bw["menu"].(json.Array); ok { menu_parse(arr, &p.menu) }
+	switch pm, _ := bw["panel"].(json.String); pm {
+	case "skald":   p.panel_mode = .Skald
+	case "process": p.panel_mode = .Process
+	}
+	p.click_out = -1
 	p.pid, p.in_fd, p.out_fd = -1, -1, -1
 	p.backoff = RESTART_MIN
 	return p, true
@@ -476,6 +498,9 @@ manifest_load :: proc(dir: string) -> (p: ^Plugin, ok: bool) {
 // plugin_start starts the process and sends the "config" event (config_line)
 // as the first stdin line.
 plugin_start :: proc(p: ^Plugin, cfg: ^Config, config_line: string) {
+	// A new process starts without a panel.
+	plugin_set_panel(p, nil)
+	p.panel_changed = false
 	argv := make([]cstring, len(p.argv) + 1, context.temp_allocator)
 	for a, i in p.argv { argv[i] = strings.clone_to_cstring(a, context.temp_allocator) }
 	env := [?]cstring{
@@ -663,6 +688,7 @@ plugin_apply_line :: proc(p: ^Plugin, line: string) -> bool {
 		}
 	}
 	if arr, ok := obj["menu"].(json.Array); ok { menu_parse(arr, &p.menu) }
+	if spec, has := obj["panel"]; has { plugin_set_panel(p, spec) }
 	if st, ok := obj["settings"].(json.Object); ok {
 		append(&p.settings_updates, json.clone_value(st, context.allocator).(json.Object))
 	}

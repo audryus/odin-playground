@@ -11,6 +11,8 @@ import "gui:skald"
 // layer surface (native/wlbar.c: wb_popup_open) rendered by the same Skald
 // renderer as the bars.
 //
+// Panel — a plugin's panel described in JSON and drawn here (panels.odin).
+//
 // Tooltip — like Omarchy's Bar.qml: shown 400 ms after the pointer settles on
 // an item, centered on it, 6 px from the bar, body font, 10x7 px padding,
 // [tooltip] colors and a 1 px border. It takes no input.
@@ -25,7 +27,7 @@ MENU_ROW_H    :: 28 // Style.spacing.popupRowHeight
 MENU_PAD      :: 6
 MENU_ROW_PAD  :: 12 // Style.spacing.rowPaddingX
 
-Popup_Kind :: enum { Tooltip, Menu }
+Popup_Kind :: enum { Tooltip, Menu, Panel }
 
 Popup :: struct {
 	id:      i32,
@@ -41,6 +43,12 @@ Popup :: struct {
 	card:   skald.Rect,       // menu card, in popup surface coordinates
 	anchor: skald.Rect,       // the item's rect in its bar
 	opened_at: time.Tick,
+
+	// panel (panels.odin): the slider being dragged
+	drag_id:    string,
+	drag_value: f32,
+	drag_sent:  f32,
+	drag_at:    time.Tick,
 }
 
 // Hover_Target is what the pointer is over right now (recorded while drawing).
@@ -66,7 +74,6 @@ popup_by_id :: proc(app: ^App, id: i32) -> ^Popup {
 
 // ---- lifecycle ----------------------------------------------------------------
 
-@(private = "file")
 popup_new :: proc(app: ^App, kind: Popup_Kind, bar_out: i32, edges, mt, mr, mb, ml, w, h: i32) -> ^Popup {
 	id := wb_popup_open(bar_out, i32(kind == .Tooltip ? WB_POPUP_TOOLTIP : WB_POPUP_MENU), edges, mt, mr, mb, ml, w, h)
 	if id < 0 { return nil }
@@ -87,7 +94,9 @@ popup_close :: proc(app: ^App, p: ^Popup) {
 	app.popups[p.id - WB_MAX_OUTPUTS] = nil
 	if app.tooltip == p { app.tooltip = nil }
 	if app.menu == p { app.menu = nil }
+	if app.panel == p { app.panel = nil }
 	delete(p.text)
+	delete(p.drag_id)
 	menu_free(&p.items); delete(p.items)
 	free(p)
 }
@@ -351,7 +360,12 @@ render_popup :: proc(app: ^App, p: ^Popup) {
 			renderer = &app.r,
 			window   = skald.Window_Id(t),
 		}
-		v := p.kind == .Tooltip ? view_tooltip(app, p) : view_menu(app, p, &ctx)
+		v: skald.View
+		switch p.kind {
+		case .Tooltip: v = view_tooltip(app, p)
+		case .Menu:    v = view_menu(app, p, &ctx)
+		case .Panel:   v = view_panel(app, p, &ctx)
+		}
 		skald.render_view(&app.r, v, {0, 0}, {f32(w.size_logical.x), f32(w.size_logical.y)})
 		skald.frame_end(&app.r)
 	}
@@ -366,6 +380,7 @@ render_popup :: proc(app: ^App, p: ^Popup) {
 		}
 		wb_set_cursor(rect_has(p.card, in_.mouse_pos) ? 1 : 0)
 	}
+	if p.kind == .Panel { panel_after_frame(app, p) }
 	skald.input_begin(w)
 	p.dirty = false
 }

@@ -18,6 +18,7 @@ class Plugin:
       self.theme     Theme
       self.bar       {"position": "bottom", "size": 26}
       self.settings  the plugin's shell.json entry (without "id")
+      self.panel_mode  manifest barWidget.panel ("plugin", "skald", "process")
     """
 
     def __init__(self):
@@ -29,6 +30,8 @@ class Plugin:
         self._last = {}
         self._configured = False
         self._popups = []  # Panel / HoverPopup instances, closed on "dismiss"
+        self._panel = None  # the nodes.SkaldPanel, which gets the "panel" events
+        self.panel_mode = "plugin"  # manifest barWidget.panel: plugin / skald / process
 
     # ---- override ---------------------------------------------------------
 
@@ -194,6 +197,7 @@ class Plugin:
             self.theme = Theme(ev.get("theme"))
             settings = ev.get("settings")
             self.settings = settings if isinstance(settings, dict) else {}
+            self.panel_mode = ev.get("panel") or "plugin"
             self._configured = True
             self._last.clear()  # re-send: position/theme may change the drawing
             self.on_config(ev)
@@ -205,6 +209,9 @@ class Plugin:
             self.on_hover(ev)
         elif kind == "menu":
             self.on_menu(ev)
+        elif kind == "panel":
+            if self._panel is not None:
+                self._panel._event(ev)
         elif kind == "dismiss":
             for popup in self._popups:
                 popup.dismiss()

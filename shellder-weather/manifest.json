@@ -1,0 +1,18 @@
+{
+  "schemaVersion": 1,
+  "id": "shellder.weather",
+  "name": "Weather",
+  "version": "1.0.0",
+  "author": "audryus",
+  "description": "Current conditions and a 3-day forecast",
+  "kinds": ["bar-widget"],
+  "entryPoints": {
+    "barWidget": ["python3", "-u", "weather.py"]
+  },
+  "barWidget": {
+    "displayName": "Weather",
+    "category": "Info",
+    "defaultSection": "center",
+    "hover": "none"
+  }
+}

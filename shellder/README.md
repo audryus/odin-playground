@@ -349,12 +349,26 @@ Omarchy's `KeyboardPanel.qml` — it is what allows clicking outside to close
 
 ### Examples
 
-- [`../shellder-clock`](../shellder-clock) — port of the Omarchy clock, with
-  its calendar (Python + GTK4).
-- [`../shellder-workspace`](../shellder-workspace) — workspaces per output
-  (Python, standard library only; uses `monitor` and `segments`).
-- [`../shellder-indicators`](../shellder-indicators) — Omarchy's status
-  indicators (uses `segments`, `hover` and the kit).
+Ports of every Omarchy bar widget (each folder has its own README):
+
+| Plugin | Omarchy widget | Shows |
+|---|---|---|
+| [`shellder-workspace`](../shellder-workspace) | omarchy.workspaces | workspaces per output (standard library only; `monitor`, `segments`) |
+| [`shellder-indicators`](../shellder-indicators) | omarchy.indicators | status indicators, revealed on hover (`segments`, `hover`) |
+| [`shellder-clock`](../shellder-clock) | omarchy.clock | clock, big-time hover, calendar panel, right-click `menu` |
+| [`shellder-keyboard-layout`](../shellder-keyboard-layout) | omarchy.keyboard-layout | xkb layout code (only with several layouts) |
+| [`shellder-weather`](../shellder-weather) | omarchy.weather | condition glyph, forecast panel, location search |
+| [`shellder-system-update`](../shellder-system-update) | omarchy.system-update | pending Omarchy update glyph |
+| [`shellder-tray`](../shellder-tray) | omarchy.tray | StatusNotifierItem tray, drawer, dbusmenu (`image`, `passive`) |
+| [`shellder-agents`](../shellder-agents) | omarchy.agents | AI subscription limits and token usage |
+| [`shellder-bluetooth`](../shellder-bluetooth) | omarchy.bluetooth | adapter, devices, discovery |
+| [`shellder-network`](../shellder-network) | omarchy.network | status glyph, details, DNS, Wi-Fi |
+| [`shellder-audio`](../shellder-audio) | omarchy.audio | volume glyph, devices and streams |
+| [`shellder-monitor`](../shellder-monitor) | omarchy.monitor | brightness, text size, scale, outputs |
+| [`shellder-power`](../shellder-power) | omarchy.power | battery (hidden without one), power profiles |
+
+Small examples:
+
 - `examples/plugins/counter-python/` — interactive: clicks and scroll change a
   counter (JSON both ways).
 - `examples/plugins/loadavg-bash/` — just `echo` every 5 seconds.

@@ -1,0 +1,17 @@
+{
+  "schemaVersion": 1,
+  "id": "shellder.keyboard-layout",
+  "name": "Keyboard layout",
+  "version": "1.0.0",
+  "author": "audryus",
+  "description": "Current xkb layout, click cycles",
+  "kinds": ["bar-widget"],
+  "entryPoints": {
+    "barWidget": ["python3", "-u", "keyboard_layout.py"]
+  },
+  "barWidget": {
+    "displayName": "Keyboard layout",
+    "category": "Compositor",
+    "defaultSection": "center"
+  }
+}

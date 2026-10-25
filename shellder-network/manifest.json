@@ -7,12 +7,14 @@
   "description": "Connection status, details, DNS and Wi-Fi",
   "kinds": ["bar-widget"],
   "entryPoints": {
-    "barWidget": ["python3", "-u", "network.py"]
+    "barWidget": ["python3", "-u", "network.py"],
+    "panel": ["python3", "-u", "panel.py"]
   },
   "barWidget": {
     "displayName": "Network",
     "category": "System",
     "defaultSection": "right",
-    "hover": "none"
+    "hover": "none",
+    "panel": "process"
   }
 }

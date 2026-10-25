@@ -1,0 +1,17 @@
+{
+  "schemaVersion": 1,
+  "id": "shellder.system-update",
+  "name": "System update",
+  "version": "1.0.0",
+  "author": "audryus",
+  "description": "Pending Omarchy update indicator",
+  "kinds": ["bar-widget"],
+  "entryPoints": {
+    "barWidget": ["python3", "-u", "system_update.py"]
+  },
+  "barWidget": {
+    "displayName": "System update",
+    "category": "System",
+    "defaultSection": "center"
+  }
+}

@@ -28,7 +28,7 @@ import json
 import subprocess
 import sys
 
-Gtk = Gdk = GLib = LayerShell = None
+Gtk = Gdk = GdkPixbuf = GLib = LayerShell = None
 _css_provider = None
 _css_theme = None
 
@@ -36,7 +36,7 @@ _css_theme = None
 def import_gtk():
     """Load GTK4 + layer-shell. libgtk4-layer-shell must be loaded before
     libwayland-client, hence the CDLL before importing Gtk."""
-    global Gtk, Gdk, GLib, LayerShell
+    global Gtk, Gdk, GdkPixbuf, GLib, LayerShell
     if Gtk is not None:
         return True
     try:
@@ -46,12 +46,13 @@ def import_gtk():
         gi.require_version("Gtk", "4.0")
         gi.require_version("Gdk", "4.0")
         gi.require_version("Gtk4LayerShell", "1.0")
-        from gi.repository import Gdk as _Gdk, GLib as _GLib, Gtk as _Gtk
+        gi.require_version("GdkPixbuf", "2.0")
+        from gi.repository import Gdk as _Gdk, GdkPixbuf as _GdkPixbuf, GLib as _GLib, Gtk as _Gtk
         from gi.repository import Gtk4LayerShell as _LayerShell
     except (OSError, ImportError, ValueError) as e:
         print("shellder_kit: no GTK4/gtk4-layer-shell, popups disabled: %s" % e, file=sys.stderr)
         return False
-    Gtk, Gdk, GLib, LayerShell = _Gtk, _Gdk, _GLib, _LayerShell
+    Gtk, Gdk, GdkPixbuf, GLib, LayerShell = _Gtk, _Gdk, _GdkPixbuf, _GLib, _LayerShell
     Gtk.init()
     return True
 

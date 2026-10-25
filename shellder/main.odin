@@ -341,7 +341,7 @@ view_plugin :: proc(app: ^App, p: ^Plugin, bar: ^Bar, ctx: ^skald.Ctx(Msg)) -> (
 		size := em_size(app, font_px(om, sg.font, def_size))
 		w, h := sg.width, bar_size
 		if vert { w, h = bar_size, sg.width > 0 ? sg.width : 0 }
-		pad: f32 = (vert ? h : w) > 0 ? 0 : MARGIN
+		pad: f32 = (vert ? h : w) > 0 ? 0 : sg.margin
 		content := skald.text(label, c, size, font = app.font)
 		if sg.image != "" {
 			content = skald.image(ctx, sg.image, sg.image_size, sg.image_size, fit = .Contain,

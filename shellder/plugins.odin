@@ -44,6 +44,7 @@ Segment :: struct {
 	image:      string, // PNG path drawn instead of icon/text (tray icons)
 	image_size: f32,    // logical px of the image's square (default 12)
 	passive:    bool,   // drawn only: no clicks, hover or tooltip (spacers)
+	margin:     f32,    // side margin when width is 0 (default 8.5, WidgetButton's)
 }
 
 // Hover_Mode comes from the manifest's barWidget.hover:
@@ -657,6 +658,7 @@ plugin_apply_line :: proc(p: ^Plugin, line: string) -> bool {
 				image   = str(o, "image"),
 				image_size = max(num(o, "imageSize", 12), 1),
 				passive = (o["passive"].(json.Boolean) or_else false),
+				margin  = max(num(o, "margin", 8.5), 0),
 			})
 		}
 	}
